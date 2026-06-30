@@ -1,0 +1,169 @@
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel
+
+from gpu.gpu_utils import validate_gpu_id
+
+
+loaded_models = {}
+
+
+def load_tokenizer(base_model_path: str, hf_key: str | None = None):
+    tokenizer = AutoTokenizer.from_pretrained(
+        base_model_path,
+        token=hf_key,
+        trust_remote_code=True,
+    )
+
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    return tokenizer
+
+
+def load_base_model(
+    base_model_path: str,
+    gpu_id: int,
+    hf_key: str | None = None,
+):
+    validate_gpu_id(gpu_id)
+
+
+    model = AutoModelForCausalLM.from_pretrained(
+        base_model_path,
+        token=hf_key,
+        device_map = "auto",
+        dtype=torch.bfloat16,
+        trust_remote_code=True,
+    )
+    
+    return model
+
+
+def load_full_model(
+    base_model_path: str,
+    gpu_id: int,
+    hf_key: str | None = None,
+    adaptor_path: str | None = None,
+):
+    model = load_base_model(base_model_path, gpu_id, hf_key)
+    tokenizer = load_tokenizer(base_model_path, hf_key)
+
+    merged = False
+
+    if adaptor_path:
+        peft_model = PeftModel.from_pretrained(
+            model,
+            adaptor_path,
+            is_trainable=True,
+            device_map="auto",
+        )
+
+        model = peft_model.merge_and_unload()
+        merged = True
+
+    model.eval()
+
+    return model, tokenizer, merged
+
+
+def load_lora_model(
+    base_model_path: str,
+    gpu_id: int,
+    hf_key: str | None = None,
+    adaptor_path: str | None = None,
+):
+    model = load_base_model(base_model_path, gpu_id, hf_key)
+    tokenizer = load_tokenizer(base_model_path, hf_key)
+
+    merged = False
+
+    if adaptor_path:
+        peft_model = PeftModel.from_pretrained(
+            model,
+            adaptor_path,
+            is_trainable=True,
+            device_map="auto",
+        )
+
+        model = peft_model.merge_and_unload()
+        merged = True
+
+    model.eval()
+
+    return model, tokenizer, merged
+
+
+def load_adaptor_model(
+    base_model_path: str,
+    adaptor_path: str,
+    gpu_id: int,
+    hf_key: str | None = None,
+):
+    if adaptor_path is None:
+        raise ValueError("adaptor_path is mandatory when method='adaptor'.")
+
+    model = load_base_model(base_model_path, gpu_id, hf_key)
+    tokenizer = load_tokenizer(base_model_path, hf_key)
+
+    model = PeftModel.from_pretrained(
+        model,
+        adaptor_path,
+        is_trainable=True,
+        device_map="auto",
+    )
+
+    model.train()
+    if hasattr(model, "config"):
+        model.config.use_cache = False
+
+    return model, tokenizer, False
+
+
+def load_model_by_method(
+    method: str,
+    base_model_path: str,
+    gpu_id: int,
+    hf_key: str | None = None,
+    adaptor_path: str | None = None,
+):
+    if method == "full":
+        return load_full_model(
+            base_model_path=base_model_path,
+            hf_key=hf_key,
+            adaptor_path=adaptor_path,
+            gpu_id=gpu_id,
+        )
+
+    if method == "lora":
+        return load_lora_model(
+            base_model_path=base_model_path,
+            hf_key=hf_key,
+            adaptor_path=adaptor_path,
+            gpu_id=gpu_id,
+        )
+
+    if method == "adaptor":
+        return load_adaptor_model(
+            base_model_path=base_model_path,
+            adaptor_path=adaptor_path,
+            hf_key=hf_key,
+            gpu_id=gpu_id,
+        )
+
+    raise ValueError(f"Unknown method: {method}")
+
+
+def store_loaded_model(
+    model_key: str,
+    model,
+    tokenizer,  
+):
+    loaded_models[model_key] = {
+        "model": model,
+        "tokenizer": tokenizer,
+    }
+
+
+def get_loaded_model(model_key: str):
+    return loaded_models.get(model_key)

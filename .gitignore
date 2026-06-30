@@ -1,0 +1,10 @@
+outputs/
+.venv/
+uploaded_datasets/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+front end/node_modules/
+front end/dist/
