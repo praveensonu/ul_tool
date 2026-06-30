@@ -170,3 +170,11 @@ More detail is available in:
 - `docs/RUN_INSTRUCTIONS.md`
 - `docs/ARCHITECTURE.md`
 - `docs/FRONTEND.md`
+
+## Resources
+
+See `docs/resources.md` for product and UI references.
+
+## Plan
+
+See `docs/plan.md` for the project plan.
