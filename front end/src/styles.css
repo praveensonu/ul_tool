@@ -78,7 +78,8 @@ p {
 
 .status-button,
 .primary-button,
-.secondary-button {
+.secondary-button,
+.danger-button {
   display: inline-flex;
   min-height: 42px;
   align-items: center;
@@ -125,6 +126,16 @@ p {
 .secondary-button:hover:not(:disabled),
 .status-button:hover {
   background: #edf1ec;
+}
+
+.danger-button {
+  border: 1px solid #b74332;
+  background: #fff5f2;
+  color: #9a2f20;
+}
+
+.danger-button:hover:not(:disabled) {
+  background: #fee7e1;
 }
 
 button:disabled {

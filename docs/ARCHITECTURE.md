@@ -40,6 +40,7 @@ The next planned modules are:
 │   ├── __init__.py
 │   └── model_loader.py
 ├── orchestrator.py
+├── training_process.py
 ├── routes
 │   ├── __init__.py
 │   ├── config_routes.py
@@ -524,11 +525,19 @@ POST /train/run
 Purpose:
 
 - Build orchestrator config.
-- Call `run_orchestrator(config)`.
-- Start training.
+- Start a dedicated training child process through `training_process.py`.
+- Call `run_orchestrator(config)` inside that child process.
 - Return output directory and metrics after completion.
 
-Current behavior is synchronous: the HTTP request waits until training finishes.
+The HTTP request remains synchronous and waits until training finishes. Only one training process can be active at a time.
+
+The active run can be stopped with:
+
+```text
+POST /train/stop
+```
+
+This terminates the training child process while leaving FastAPI running. The pending `/train/run` request then returns with `status = "stopped"`.
 
 Future behavior should be asynchronous:
 
@@ -565,7 +574,12 @@ FastAPI Routes
         |-- /train/run
                 |
                 v
-            orchestrator.py
+        training_process.py
+                |
+                |-- spawn one training child process
+                |-- terminate it on /train/stop
+                v
+            orchestrator.py (child process)
                 |
                 |-- set CUDA_VISIBLE_DEVICES
                 |-- load model/tokenizer

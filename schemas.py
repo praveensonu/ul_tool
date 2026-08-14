@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any, Union, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
@@ -140,4 +140,25 @@ class FinalTrainingConfigRequest(BaseModel):
 class FinalTrainingConfigResponse(BaseModel):
     status: str
     orchestrator_config: Dict[str, Any]
+    message: str
+
+
+class TrainRunSuccessResponse(BaseModel):
+    status: Literal["success"]
+    orchestrator_config: Dict[str, Any]
+    result: Dict[str, Any]
+
+
+class TrainRunStoppedResponse(BaseModel):
+    status: Literal["stopped"]
+    orchestrator_config: Dict[str, Any]
+    result: None = None
+    message: str
+
+
+TrainRunResponse = Union[TrainRunSuccessResponse, TrainRunStoppedResponse]
+
+
+class TrainStopResponse(BaseModel):
+    status: Literal["stopped", "idle"]
     message: str

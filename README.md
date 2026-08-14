@@ -28,7 +28,34 @@ Generated files are intentionally ignored by Git, including `.venv/`, `outputs/`
 
 This repository currently includes a local `.venv/` workflow. The checked-in `requirements.txt` contains environment-specific pins, so use the existing environment when available or recreate dependencies carefully for your machine.
 
-## Run The Backend
+## Quick Start
+
+The backend uses the repository's Python environment and the frontend runs in Docker. From the repository root, start both services with:
+
+```bash
+./start.sh
+```
+
+The command builds the frontend image, then starts both development servers with their logs in the current terminal:
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:8000`
+
+Browser requests to `/api` are proxied from the frontend to the backend. Press `Ctrl+C` once to stop both services; the supervisor terminates the backend process group and stops the frontend container.
+
+The defaults can be overridden when needed:
+
+```bash
+BACKEND_PORT=8080 FRONTEND_PORT=5174 ./start.sh
+```
+
+`PYTHON_BIN`, `BACKEND_HOST`, `BACKEND_PORT`, `FRONTEND_PORT`, `FRONTEND_IMAGE`, `FRONTEND_CONTAINER`, `VITE_API_BASE_URL`, and `API_PROXY_TARGET` are supported. When only `BACKEND_PORT` changes, the default proxy target follows it automatically.
+
+## Development: Run Services Individually
+
+Running each service separately remains useful for focused development and debugging.
+
+### Backend
 
 Start the backend from the repository root:
 
@@ -36,13 +63,7 @@ Start the backend from the repository root:
 .venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-The backend listens at:
-
-```text
-http://localhost:8000
-```
-
-Check that it is running:
+Check it at `http://localhost:8000`:
 
 ```bash
 curl -s http://127.0.0.1:8000/
@@ -54,7 +75,7 @@ Expected response:
 {"message":"LLM training API is running"}
 ```
 
-## Run The Frontend
+### Frontend
 
 The frontend is intended to run through Docker, so host-level `npm` is not required.
 
@@ -84,7 +105,7 @@ http://localhost:5173
 
 Start the backend before using the browser UI. The frontend proxies browser requests from `http://localhost:5173/api` to `http://host.docker.internal:8000`. If the backend is not running, actions such as dataset upload may fail with `502 Bad Gateway`.
 
-## Docker Compose Option
+### Frontend Docker Compose Option
 
 If Docker Compose is available:
 
@@ -100,7 +121,7 @@ cd "front end"
 docker compose down
 ```
 
-## Stop Services
+### Stop Individually Started Services
 
 Stop the frontend container:
 
@@ -152,9 +173,10 @@ The prompt template must contain `{question}`. During upload, the backend applie
 - `GET /` - backend health check.
 - `POST /dataset/upload` - upload a required forget set, optional retain set, and prompt template.
 - `POST /config/build` - validate a training request and return the orchestrator config.
-- `POST /train/run` - build the config and run training.
+- `POST /train/run` - build the config and run training in a dedicated child process.
+- `POST /train/stop` - terminate the active training process without stopping the API.
 
-The frontend uses these endpoints to provide the main workflow: upload datasets, preview processed rows, configure model and training settings, inspect the generated orchestrator JSON, and launch training.
+The frontend uses these endpoints to provide the main workflow: upload datasets, preview processed rows, configure model and training settings, inspect the generated orchestrator JSON, launch training, and stop an active run.
 
 ## Training Configuration Notes
 

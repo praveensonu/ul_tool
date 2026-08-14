@@ -66,6 +66,7 @@ GET  /
 POST /dataset/upload
 POST /config/build
 POST /train/run
+POST /train/stop
 ```
 
 ### Dataset Upload
@@ -93,9 +94,9 @@ The UI displays this JSON so the user can inspect the exact payload before launc
 
 ### Training Run
 
-`POST /train/run` sends the same validated training request and waits for the backend response.
+`POST /train/run` sends the same validated training request and waits for the backend response. The backend runs the training workload in a dedicated child process.
 
-The current backend is synchronous, so the frontend shows a running state until the request returns. The architecture document notes future progress streaming; when that is added, this UI can be extended with a live progress panel.
+While the request is active, the frontend replaces the run button with a stop button. `POST /train/stop` terminates the active training child process without stopping FastAPI. The original run request then returns a stopped result. The request remains synchronous, so the frontend shows a running state until training finishes or is stopped. The architecture document notes future progress streaming; when that is added, this UI can be extended with a live progress panel.
 
 ## UI Workflow
 

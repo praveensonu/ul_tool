@@ -9,9 +9,16 @@ import {
   Play,
   RefreshCw,
   Settings2,
+  Square,
   Upload
 } from "lucide-react";
-import { buildConfig, checkBackend, runTraining, uploadDatasets } from "./api";
+import {
+  buildConfig,
+  checkBackend,
+  runTraining,
+  stopTraining,
+  uploadDatasets
+} from "./api";
 import type {
   ConfigBuildResponse,
   DatasetUploadResponse,
@@ -102,6 +109,8 @@ export default function App() {
   const [config, setConfig] = useState<ConfigBuildResponse | null>(null);
   const [training, setTraining] = useState<TrainRunResponse | null>(null);
   const [busyAction, setBusyAction] = useState<"build" | "train" | null>(null);
+  const [stopping, setStopping] = useState(false);
+  const [trainingMessage, setTrainingMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function refreshBackend() {
@@ -232,6 +241,7 @@ export default function App() {
   async function handleTrain() {
     setError(null);
     setTraining(null);
+    setTrainingMessage(null);
 
     if (!payload) {
       setError("Upload datasets before running training.");
@@ -239,12 +249,30 @@ export default function App() {
     }
 
     setBusyAction("train");
+    setTrainingMessage("Training is running.");
     try {
-      setTraining(await runTraining(payload));
+      const response = await runTraining(payload);
+      setTraining(response);
+      setTrainingMessage(response.message ?? null);
     } catch (err) {
+      setTrainingMessage(null);
       setError(err instanceof Error ? err.message : "Training failed.");
     } finally {
       setBusyAction(null);
+    }
+  }
+
+  async function handleStopTraining() {
+    setError(null);
+    setStopping(true);
+
+    try {
+      const response = await stopTraining();
+      setTrainingMessage(response.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not stop training.");
+    } finally {
+      setStopping(false);
     }
   }
 
@@ -526,19 +554,31 @@ export default function App() {
               )}
               <span>Build config</span>
             </button>
-            <button
-              className="primary-button"
-              type="button"
-              disabled={!canTrain}
-              onClick={handleTrain}
-            >
-              {busyAction === "train" ? (
-                <Loader2 className="spin" size={17} />
-              ) : (
+            {busyAction === "train" ? (
+              <button
+                className="danger-button"
+                type="button"
+                disabled={stopping}
+                onClick={handleStopTraining}
+              >
+                {stopping ? (
+                  <Loader2 className="spin" size={17} />
+                ) : (
+                  <Square size={16} fill="currentColor" />
+                )}
+                <span>{stopping ? "Stopping" : "Stop training"}</span>
+              </button>
+            ) : (
+              <button
+                className="primary-button"
+                type="button"
+                disabled={!canTrain}
+                onClick={handleTrain}
+              >
                 <Play size={17} />
-              )}
-              <span>{busyAction === "train" ? "Running" : "Run training"}</span>
-            </button>
+                <span>Run training</span>
+              </button>
+            )}
           </section>
 
           <section className="result-panel">
@@ -574,7 +614,7 @@ export default function App() {
 
           <section className="result-panel">
             <h2>Training result</h2>
-            {training ? (
+            {training?.status === "success" ? (
               <div className="result-summary">
                 <div>
                   <span>Status</span>
@@ -590,6 +630,16 @@ export default function App() {
                 </div>
                 <pre>{JSON.stringify(training.result.metrics, null, 2)}</pre>
               </div>
+            ) : training?.status === "stopped" ? (
+              <div className="result-summary">
+                <div>
+                  <span>Status</span>
+                  <strong>stopped</strong>
+                </div>
+                <p className="muted">{training.message}</p>
+              </div>
+            ) : trainingMessage ? (
+              <p className="muted">{trainingMessage}</p>
             ) : (
               <p className="muted">Training output appears here after `/train/run` returns.</p>
             )}

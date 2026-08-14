@@ -61,16 +61,31 @@ export type ConfigBuildResponse = {
   message: string;
 };
 
-export type TrainRunResponse = {
+type TrainResult = {
   status: string;
-  orchestrator_config: Record<string, unknown>;
-  result: {
-    status: string;
-    run_type: string;
-    merged_adapter: boolean;
-    output_dir: string;
-    trainable_parameters: number;
-    total_parameters: number;
-    metrics: Record<string, unknown>;
-  };
+  run_type: string;
+  merged_adapter: boolean;
+  output_dir: string;
+  trainable_parameters: number;
+  total_parameters: number;
+  metrics: Record<string, unknown>;
+};
+
+export type TrainRunResponse =
+  | {
+      status: "success";
+      orchestrator_config: Record<string, unknown>;
+      result: TrainResult;
+      message?: string | null;
+    }
+  | {
+      status: "stopped";
+      orchestrator_config: Record<string, unknown>;
+      result: null;
+      message: string;
+    };
+
+export type TrainStopResponse = {
+  status: "stopped" | "idle";
+  message: string;
 };

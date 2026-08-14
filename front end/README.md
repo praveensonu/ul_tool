@@ -41,3 +41,4 @@ If Docker Compose is available on your machine, this folder also includes `docke
 - Configure validated hyperparameters for max steps or epochs.
 - Build the orchestrator config through `/config/build`.
 - Launch training through `/train/run`.
+- Stop an active training process through `/train/stop`.

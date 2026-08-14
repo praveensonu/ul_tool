@@ -1,24 +1,63 @@
 from fastapi import APIRouter, HTTPException
 
-from schemas import FinalTrainingConfigRequest
+from schemas import (
+    FinalTrainingConfigRequest,
+    TrainRunResponse,
+    TrainStopResponse,
+)
 from config.training_config import build_orchestrator_config
-from orchestrator import run_orchestrator
+from training_process import (
+    TrainingAlreadyRunningError,
+    TrainingProcessError,
+    training_process_manager,
+)
 
 router = APIRouter(prefix="/train", tags=["Training"])
 
 
-@router.post("/run")
+@router.post("/run", response_model=TrainRunResponse)
 def run_training(request: FinalTrainingConfigRequest):
     try:
         orchestrator_config = build_orchestrator_config(request)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        result = run_orchestrator(orchestrator_config)
+    try:
+        outcome = training_process_manager.run(orchestrator_config)
+    except TrainingAlreadyRunningError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except TrainingProcessError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    if outcome.status == "stopped":
         return {
-            "status": "success",
+            "status": "stopped",
             "orchestrator_config": orchestrator_config,
-            "result": result,
+            "result": None,
+            "message": "Training was stopped before completion.",
         }
 
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return {
+        "status": "success",
+        "orchestrator_config": orchestrator_config,
+        "result": outcome.result,
+    }
+
+
+@router.post("/stop", response_model=TrainStopResponse)
+def stop_training():
+    try:
+        stopped = training_process_manager.stop()
+    except TrainingProcessError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    if not stopped:
+        return {
+            "status": "idle",
+            "message": "No training process is currently running.",
+        }
+
+    return {
+        "status": "stopped",
+        "message": "Training process terminated.",
+    }
