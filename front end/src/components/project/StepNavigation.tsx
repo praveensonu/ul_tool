@@ -1,0 +1,43 @@
+import { Check } from "lucide-react";
+import type { Project, ProjectStage } from "../../types";
+import { canAccessStage, isStageComplete } from "../../utils/projectValidation";
+
+const steps: Array<{ id: ProjectStage; label: string }> = [
+  { id: "data", label: "Data" },
+  { id: "model", label: "Model" },
+  { id: "hyperparameters", label: "Hyperparameters" },
+  { id: "running", label: "Running" }
+];
+
+export default function StepNavigation({
+  project,
+  currentStage,
+  onSelect
+}: {
+  project: Project;
+  currentStage: ProjectStage;
+  onSelect: (stage: ProjectStage) => void;
+}) {
+  return (
+    <nav className="step-navigation" aria-label="Project stages">
+      {steps.map((step, index) => {
+        const accessible = canAccessStage(project, step.id);
+        const complete = isStageComplete(project, step.id);
+        const active = step.id === currentStage;
+
+        return (
+          <button
+            key={step.id}
+            className={`step-button ${active ? "active" : ""} ${complete ? "complete" : ""}`}
+            type="button"
+            disabled={!accessible}
+            onClick={() => onSelect(step.id)}
+          >
+            <span className="step-number">{complete ? <Check size={15} /> : index + 1}</span>
+            <span>{step.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}

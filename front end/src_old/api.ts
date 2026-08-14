@@ -1,19 +1,16 @@
 import type {
   ConfigBuildResponse,
   DatasetUploadResponse,
-  EvaluationRequest,
-  EvaluationResponse,
   FinalTrainingConfigRequest,
   TrainRunResponse,
   TrainStopResponse
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
-const EVALUATION_ENDPOINT =
-  import.meta.env.VITE_EVALUATION_ENDPOINT || `${API_BASE}/evaluation/run`;
 
 async function readJson<T>(response: Response): Promise<T> {
   const payload = await response.json().catch(() => ({}));
+
   if (!response.ok) {
     const detail = payload?.detail;
     const message =
@@ -48,6 +45,7 @@ export async function buildConfig(payload: FinalTrainingConfigRequest) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
+
   return readJson<ConfigBuildResponse>(response);
 }
 
@@ -65,25 +63,6 @@ export async function stopTraining() {
   const response = await fetch(`${API_BASE}/train/stop`, {
     method: "POST"
   });
+
   return readJson<TrainStopResponse>(response);
-}
-
-export async function runEvaluation(payload: EvaluationRequest) {
-  const response = await fetch(EVALUATION_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  return readJson<EvaluationResponse>(response);
-}
-
-export async function getLoraTargetModules(): Promise<string[]> {
-  const response = await fetch(`${API_BASE}/openapi.json`);
-  const openApi = await readJson<Record<string, unknown>>(response);
-  const components = openApi.components as Record<string, unknown> | undefined;
-  const schemas = components?.schemas as Record<string, unknown> | undefined;
-  const targetSchema = schemas?.LoraTargetModule as Record<string, unknown> | undefined;
-  const values = targetSchema?.enum;
-
-  return Array.isArray(values) ? values.filter((item): item is string => typeof item === "string") : [];
 }

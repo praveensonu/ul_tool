@@ -1,11 +1,21 @@
 export type Method = "full" | "lora" | "adaptor";
 export type StepMode = "max_steps" | "epochs";
-export type LoraTarget = "q_proj" | "v_proj" | "k_proj" | "o_proj";
+export type LoraTarget = string;
+export type ProjectStage = "data" | "model" | "hyperparameters" | "running";
+export type DataSourceMode = "upload" | "extract";
 
-export type PreviewRow = {
+export type BackendPreviewRow = {
   question?: string;
   answer?: string;
   [key: string]: unknown;
+};
+
+export type ProjectPreviewRow = {
+  key: string;
+  id: string;
+  question: string;
+  answer: string;
+  raw: Record<string, unknown>;
 };
 
 export type DatasetUploadResponse = {
@@ -16,8 +26,8 @@ export type DatasetUploadResponse = {
   retain_rows: number | null;
   has_retain_set: boolean;
   prompt_template: string;
-  forget_preview: PreviewRow[];
-  retain_preview: PreviewRow[] | null;
+  forget_preview: BackendPreviewRow[];
+  retain_preview: BackendPreviewRow[] | null;
   message: string;
 };
 
@@ -62,13 +72,14 @@ export type ConfigBuildResponse = {
 };
 
 type TrainResult = {
-  status: string;
-  run_type: string;
-  merged_adapter: boolean;
-  output_dir: string;
-  trainable_parameters: number;
-  total_parameters: number;
-  metrics: Record<string, unknown>;
+  status?: string;
+  run_type?: string;
+  merged_adapter?: boolean;
+  output_dir?: string;
+  trainable_parameters?: number;
+  total_parameters?: number;
+  metrics?: Record<string, unknown>;
+  [key: string]: unknown;
 };
 
 export type TrainRunResponse =
@@ -88,4 +99,92 @@ export type TrainRunResponse =
 export type TrainStopResponse = {
   status: "stopped" | "idle";
   message: string;
+};
+
+export type EvaluationRequest = {
+  orchestrator_config: Record<string, unknown>;
+  training_result: Record<string, unknown> | null;
+};
+
+export type EvaluationResponse = {
+  status: string;
+  message?: string;
+  [key: string]: unknown;
+};
+
+export type ProjectDataConfig = {
+  sourceMode: DataSourceMode;
+
+  // Direct upload mode.
+  forgetFile: File | null;
+  retainFile: File | null;
+
+  // Extract mode: derive forget/retain from full data + poison set.
+  fullFile: File | null;
+  poisonFile: File | null;
+
+  // Files actually sent to the backend after extraction / row filtering.
+  preparedForgetFile: File | null;
+  preparedRetainFile: File | null;
+
+  // The full backend prompt stays fixed. The UI only shows {question}.
+  promptTemplate: string;
+
+  previewRows: ProjectPreviewRow[];
+  selectedPreviewKeys: string[];
+  previewReady: boolean;
+  previewFilterable: boolean;
+
+  uploadResponse: DatasetUploadResponse | null;
+  backendUploadError: string | null;
+};
+
+export type ProjectModelConfig = {
+  modelName: string;
+  method: Method;
+  adaptorPath: string;
+  hfKey: string;
+  gpuId: number;
+  selectedTargets: LoraTarget[];
+};
+
+export type ProjectHyperparametersConfig = {
+  stepMode: StepMode;
+  maxSteps: number;
+  epochs: number;
+  learningRate: string;
+  contextLength: number;
+  batchSize: number;
+  gradAccum: number;
+  weightDecay: number;
+  saveSteps: number;
+};
+
+export type ProjectRunState = {
+  config: ConfigBuildResponse | null;
+  training: TrainRunResponse | null;
+  message: string | null;
+  evaluationRequested: boolean;
+  evaluation: EvaluationResponse | null;
+  evaluationMessage: string | null;
+};
+
+export type CompletedStages = {
+  data: boolean;
+  model: boolean;
+  hyperparameters: boolean;
+  running: boolean;
+};
+
+export type Project = {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  lastStage: ProjectStage;
+  completedStages: CompletedStages;
+  data: ProjectDataConfig;
+  model: ProjectModelConfig;
+  hyperparameters: ProjectHyperparametersConfig;
+  run: ProjectRunState;
 };
