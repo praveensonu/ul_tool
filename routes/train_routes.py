@@ -11,12 +11,19 @@ from training_process import (
     TrainingProcessError,
     training_process_manager,
 )
+from evaluation_process import evaluation_process_manager
 
 router = APIRouter(prefix="/train", tags=["Training"])
 
 
 @router.post("/run", response_model=TrainRunResponse)
 def run_training(request: FinalTrainingConfigRequest):
+    if evaluation_process_manager.is_running:
+        raise HTTPException(
+            status_code=409,
+            detail="Training cannot start while evaluation is active.",
+        )
+
     try:
         orchestrator_config = build_orchestrator_config(request)
     except Exception as exc:

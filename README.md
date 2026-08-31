@@ -41,7 +41,7 @@ The command builds the frontend image, then starts both development servers with
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:8000`
 
-Browser requests to `/api` are proxied from the frontend to the backend. Press `Ctrl+C` once to stop both services; the supervisor terminates the backend process group and stops the frontend container.
+Browser requests go directly to the backend's `/api` routes, with FastAPI CORS configured for the development frontend origin. Press `Ctrl+C` once to stop both services; the supervisor terminates the backend process group and stops the frontend container.
 
 The defaults can be overridden when needed:
 
@@ -49,7 +49,7 @@ The defaults can be overridden when needed:
 BACKEND_PORT=8080 FRONTEND_PORT=5174 ./start.sh
 ```
 
-`PYTHON_BIN`, `BACKEND_HOST`, `BACKEND_PORT`, `FRONTEND_PORT`, `FRONTEND_IMAGE`, `FRONTEND_CONTAINER`, `VITE_API_BASE_URL`, and `API_PROXY_TARGET` are supported. When only `BACKEND_PORT` changes, the default proxy target follows it automatically.
+`PYTHON_BIN`, `BACKEND_HOST`, `BACKEND_PORT`, `FRONTEND_PORT`, `FRONTEND_IMAGE`, `FRONTEND_CONTAINER`, `VITE_API_URL`, `CORS_ALLOWED_ORIGINS`, and `API_PROXY_TARGET` are supported. When ports change, the default frontend API URL and CORS origins follow them automatically.
 
 ## Development: Run Services Individually
 
@@ -66,7 +66,7 @@ Start the backend from the repository root:
 Check it at `http://localhost:8000`:
 
 ```bash
-curl -s http://127.0.0.1:8000/
+curl -s http://127.0.0.1:8000/api/health
 ```
 
 Expected response:
@@ -90,10 +90,8 @@ Start the frontend container:
 ```bash
 docker run -d \
   --name ascent-unlearning-frontend-dev \
-  --add-host=host.docker.internal:host-gateway \
   -p 5173:5173 \
-  -e VITE_API_BASE_URL=/api \
-  -e API_PROXY_TARGET=http://host.docker.internal:8000 \
+  -e VITE_API_URL=http://localhost:8000 \
   ascent-unlearning-frontend
 ```
 
@@ -103,7 +101,7 @@ Open the app:
 http://localhost:5173
 ```
 
-Start the backend before using the browser UI. The frontend proxies browser requests from `http://localhost:5173/api` to `http://host.docker.internal:8000`. If the backend is not running, actions such as dataset upload may fail with `502 Bad Gateway`.
+Start the backend before using the browser UI. The browser calls `http://localhost:8000/api` directly. If the backend is not running, actions such as dataset upload fail with a network error.
 
 ### Frontend Docker Compose Option
 
@@ -147,10 +145,10 @@ docker ps --filter name=ascent-unlearning-frontend-dev
 docker logs --tail 80 ascent-unlearning-frontend-dev
 ```
 
-Check that the frontend proxy can reach the backend:
+Check the backend's canonical health route:
 
 ```bash
-docker exec ascent-unlearning-frontend-dev wget -qO- http://127.0.0.1:5173/api/
+curl -s http://127.0.0.1:8000/api/health
 ```
 
 Expected response:
@@ -170,11 +168,24 @@ The prompt template must contain `{question}`. During upload, the backend applie
 
 ## Main API Endpoints
 
-- `GET /` - backend health check.
-- `POST /dataset/upload` - upload a required forget set, optional retain set, and prompt template.
-- `POST /config/build` - validate a training request and return the orchestrator config.
-- `POST /train/run` - build the config and run training in a dedicated child process.
-- `POST /train/stop` - terminate the active training process without stopping the API.
+- `GET /api/health` - backend health check.
+- `POST /api/dataset/upload` - upload a required forget set, optional retain set, and prompt template.
+- `POST /api/config/build` - validate a training request and return the orchestrator config.
+- `POST /api/train/run` - build the config and run training in a dedicated child process.
+- `POST /api/train/stop` - terminate the active training process without stopping the API.
+- `POST /api/evaluation/start` - start pre/post evaluation as a background job.
+- `GET /api/evaluation/status/{job_id}` - poll evaluation progress and results.
+- `POST /api/evaluation/run` - blocking compatibility endpoint.
+
+The original unprefixed endpoints remain available as compatibility aliases, but new integrations should use `/api/*`. API documentation is available at `http://localhost:8000/api/docs`.
+
+Evaluation is a separate fifth frontend stage. It consumes the
+`orchestrator_config` and `training_result` returned by training and requires a
+sentence-transformers model name or local path. The original and unlearnt
+language models are scored and removed one at a time before the embedding model
+is loaded. The dashboard compares forget quality, model utility, perplexity,
+conditional probability, ROUGE-L, and retain-set cosine similarity. Both forget
+and retain datasets are required.
 
 The frontend uses these endpoints to provide the main workflow: upload datasets, preview processed rows, configure model and training settings, inspect the generated orchestrator JSON, launch training, and stop an active run.
 

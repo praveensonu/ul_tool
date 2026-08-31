@@ -6,7 +6,8 @@ const steps: Array<{ id: ProjectStage; label: string }> = [
   { id: "data", label: "Data" },
   { id: "model", label: "Model" },
   { id: "hyperparameters", label: "Hyperparameters" },
-  { id: "running", label: "Running" }
+  { id: "running", label: "Unlearning" },
+  { id: "evaluation", label: "Evaluation" }
 ];
 
 export default function StepNavigation({

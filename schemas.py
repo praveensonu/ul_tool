@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import Optional, List, Dict, Any, Union, Literal
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class LoadMethod(str, Enum):
@@ -162,3 +162,113 @@ TrainRunResponse = Union[TrainRunSuccessResponse, TrainRunStoppedResponse]
 class TrainStopResponse(BaseModel):
     status: Literal["stopped", "idle"]
     message: str
+
+
+class EvaluationTrainingResult(BaseModel):
+    """The part of a completed training response needed for evaluation."""
+
+    model_config = ConfigDict(extra="allow")
+
+    output_dir: str = Field(..., min_length=1)
+
+
+class EvaluationRequest(BaseModel):
+    orchestrator_config: Dict[str, Any]
+    training_result: EvaluationTrainingResult
+    embedding_model_name: str = Field(..., min_length=1)
+    embedding_batch_size: int = Field(default=32, ge=1)
+    max_new_tokens: int = Field(default=256, ge=1)
+    evaluation_output_dir: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_evaluation_inputs(self):
+        model_config = self.orchestrator_config.get("model")
+        dataset_config = self.orchestrator_config.get("dataset")
+        gpu_config = self.orchestrator_config.get("gpu")
+
+        if not isinstance(model_config, dict) or not model_config.get("model_name"):
+            raise ValueError("orchestrator_config.model.model_name is required.")
+        if not isinstance(dataset_config, dict):
+            raise ValueError("orchestrator_config.dataset is required.")
+        if not dataset_config.get("forget_set_path"):
+            raise ValueError(
+                "orchestrator_config.dataset.forget_set_path is required."
+            )
+        if not dataset_config.get("retain_set_path"):
+            raise ValueError(
+                "orchestrator_config.dataset.retain_set_path is required to "
+                "compute model utility."
+            )
+        if not isinstance(gpu_config, dict) or not isinstance(
+            gpu_config.get("gpu_id"), int
+        ):
+            raise ValueError("orchestrator_config.gpu.gpu_id is required.")
+        if gpu_config["gpu_id"] < 0:
+            raise ValueError("orchestrator_config.gpu.gpu_id must be non-negative.")
+
+        return self
+
+
+class ForgetQualityScores(BaseModel):
+    evaluated_rows: int
+    score: float
+    average_perplexity: float
+    mean_conditional_probability: float
+    mean_rouge_l: float
+    component_scores: List[float]
+
+
+class ModelUtilityScores(BaseModel):
+    evaluated_rows: int
+    score: float
+    average_perplexity: float
+    mean_conditional_probability: float
+    mean_rouge_l: float
+    mean_cosine_similarity: float
+    component_scores: List[float]
+
+
+class ModelEvaluationScores(BaseModel):
+    forget_quality: ForgetQualityScores
+    model_utility: ModelUtilityScores
+
+
+class EvaluationOutputFiles(BaseModel):
+    pre_forget_scores_path: str
+    pre_retain_scores_path: str
+    post_forget_scores_path: str
+    post_retain_scores_path: str
+
+
+class EvaluationResponse(BaseModel):
+    status: Literal["success"]
+    model_path: str
+    embedding_model_name: str
+    forget_set_path: str
+    retain_set_path: str
+    pre_unlearning: ModelEvaluationScores
+    post_unlearning: ModelEvaluationScores
+    output_files: EvaluationOutputFiles
+    message: str
+
+
+class EvaluationStartResponse(BaseModel):
+    job_id: str
+    status: Literal["queued", "running"]
+    message: str
+
+
+class EvaluationProgressEvent(BaseModel):
+    stage: str
+    message: str
+    timestamp: str
+
+
+class EvaluationStatusResponse(BaseModel):
+    job_id: str
+    status: Literal["queued", "running", "completed", "failed"]
+    current_stage: str
+    message: str
+    progress: List[EvaluationProgressEvent]
+    result: Optional[EvaluationResponse] = None
+    error: Optional[str] = None

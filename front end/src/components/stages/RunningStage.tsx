@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, ExternalLink, Loader2, Play, Square } from "lucide-react";
-import { runEvaluation, runTraining, stopTraining, uploadDatasets } from "../../api";
+import { runTraining, stopTraining, uploadDatasets } from "../../api";
 import { useProject } from "../../state/ProjectContext";
-import type { DatasetUploadResponse, EvaluationRequest } from "../../types";
+import type { DatasetUploadResponse } from "../../types";
 import { buildTrainingPayload } from "../../utils/projectPayload";
 import { defaultTemplate } from "../../defaults";
 
 export default function RunningStage() {
   const { project, setDatasetUpload, updateRun, markStageCompleted } = useProject();
-  const [busy, setBusy] = useState<"train" | "evaluate" | null>(null);
+  const [busy, setBusy] = useState<"train" | null>(null);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [configUrl, setConfigUrl] = useState<string | null>(null);
@@ -65,44 +65,16 @@ export default function RunningStage() {
     return response;
   }
 
-  async function performEvaluation(trainingOverride = project.run.training) {
-    if (!trainingOverride || trainingOverride.status !== "success") {
-      throw new Error("Run training successfully before evaluation.");
-    }
-
-    const request: EvaluationRequest = {
-      orchestrator_config: trainingOverride.orchestrator_config,
-      training_result: trainingOverride.result
-    };
-
-    setBusy("evaluate");
-    updateRun({ evaluationMessage: "Evaluation is running.", evaluation: null });
-    try {
-      const evaluation = await runEvaluation(request);
-      updateRun({
-        evaluation,
-        evaluationMessage: evaluation.message ?? "Evaluation completed."
-      });
-    } catch (evaluationError) {
-      const message = evaluationError instanceof Error
-        ? evaluationError.message
-        : "Evaluation failed.";
-      updateRun({
-        evaluation: null,
-        evaluationMessage: `Evaluation could not start: ${message}`
-      });
-    } finally {
-      setBusy(null);
-    }
-  }
-
   async function handleRun() {
     setError(null);
     setBusy("train");
+    markStageCompleted("running", false);
+    markStageCompleted("evaluation", false);
     updateRun({
       message: "Training is running.",
       training: null,
       config: null,
+      evaluationJob: null,
       evaluation: null,
       evaluationMessage: null
     });
@@ -126,9 +98,6 @@ export default function RunningStage() {
 
       if (training.status === "success") {
         markStageCompleted("running", true);
-        if (project.run.evaluationRequested) {
-          await performEvaluation(training);
-        }
       }
     } catch (runError) {
       updateRun({ message: null });
@@ -155,8 +124,8 @@ export default function RunningStage() {
     <section className="stage-panel">
       <div className="stage-heading">
         <span className="stage-kicker">Stage 4</span>
-        <h1>Running</h1>
-        <p>Review the configuration, start training, and optionally evaluate immediately afterwards.</p>
+        <h1>Run unlearning</h1>
+        <p>Review the configuration and create the unlearnt model. Evaluation follows as a separate step.</p>
       </div>
 
       {error && (
@@ -174,19 +143,6 @@ export default function RunningStage() {
         <div><span>Schedule</span><strong>{summary.schedule}</strong></div>
         <div><span>Learning rate</span><strong>{project.hyperparameters.learningRate}</strong></div>
       </section>
-
-      <label className="run-option">
-        <input
-          type="checkbox"
-          checked={project.run.evaluationRequested}
-          disabled={busy !== null}
-          onChange={(event) => updateRun({ evaluationRequested: event.target.checked })}
-        />
-        <span>
-          <strong>Evaluation</strong>
-          <small>Start evaluation automatically when training finishes.</small>
-        </span>
-      </label>
 
       <div className="run-actions">
         {busy === "train" ? (
@@ -211,26 +167,6 @@ export default function RunningStage() {
 
       {project.run.message && <div className="notice info">{project.run.message}</div>}
 
-      {project.run.training?.status === "success" && !project.run.evaluationRequested && (
-        <div className="post-run-actions">
-          <button
-            className="secondary-button"
-            type="button"
-            disabled={busy !== null}
-            onClick={() => performEvaluation()}
-          >
-            {busy === "evaluate" ? <Loader2 className="spin" size={17} /> : <Play size={16} />}
-            Run evaluation
-          </button>
-        </div>
-      )}
-
-      {project.run.evaluationMessage && (
-        <div className={`notice ${project.run.evaluation ? "info" : "warning"}`}>
-          {project.run.evaluationMessage}
-        </div>
-      )}
-
       {project.run.training && (
         <section className="subpanel">
           <h2>Training result</h2>
@@ -238,12 +174,6 @@ export default function RunningStage() {
         </section>
       )}
 
-      {project.run.evaluation && (
-        <section className="subpanel">
-          <h2>Evaluation result</h2>
-          <pre>{JSON.stringify(project.run.evaluation, null, 2)}</pre>
-        </section>
-      )}
     </section>
   );
 }

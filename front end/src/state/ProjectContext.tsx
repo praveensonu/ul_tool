@@ -22,7 +22,9 @@ const emptyRun: ProjectRunState = {
   config: null,
   training: null,
   message: null,
-  evaluationRequested: false,
+  embeddingModelName: "",
+  evaluationMaxNewTokens: 256,
+  evaluationJob: null,
   evaluation: null,
   evaluationMessage: null
 };
@@ -93,7 +95,8 @@ export function ProjectProvider({
             data: false,
             model: false,
             hyperparameters: false,
-            running: false
+            running: false,
+            evaluation: false
           },
           run: emptyRun
         })),
@@ -119,7 +122,8 @@ export function ProjectProvider({
             data: false,
             model: false,
             hyperparameters: false,
-            running: false
+            running: false,
+            evaluation: false
           },
           run: emptyRun
         })),
@@ -140,7 +144,8 @@ export function ProjectProvider({
             ...current.completedStages,
             model: false,
             hyperparameters: false,
-            running: false
+            running: false,
+            evaluation: false
           },
           run: emptyRun
         })),
@@ -151,7 +156,8 @@ export function ProjectProvider({
           completedStages: {
             ...current.completedStages,
             hyperparameters: false,
-            running: false
+            running: false,
+            evaluation: false
           },
           run: emptyRun
         })),

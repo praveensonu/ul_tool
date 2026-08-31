@@ -21,6 +21,7 @@ front end/
 ├── src
 │   ├── App.tsx
 │   ├── api.ts
+│   ├── apiConfig.ts
 │   ├── main.tsx
 │   ├── styles.css
 │   ├── types.ts
@@ -41,19 +42,33 @@ The Docker image uses `node:22-alpine` and runs the Vite dev server on port `517
 
 ## Backend Integration
 
-Browser requests use `VITE_API_BASE_URL`, which defaults to:
+`front end/src/apiConfig.ts` is the single source of truth for the backend URL. It reads the backend origin from:
 
 ```text
-/api
+VITE_API_URL=http://localhost:8000
 ```
 
-During local development, Vite proxies `/api` to the backend target configured by:
+The helper appends the canonical `/api` prefix and exports `apiUrl(path)`. `front end/src/api.ts` owns request/response handling, and components import its typed functions instead of calling `fetch` or embedding backend URLs.
+
+Example:
+
+```ts
+const response = await fetch(apiUrl("config/build"), {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(payload)
+});
+```
+
+For a same-origin production deployment, set `VITE_API_URL` to an empty string so requests use `/api/*`. Vite environment variables are substituted when its dev server starts or when the frontend is built, so production builds must receive the intended value.
+
+`VITE_API_BASE_URL` remains a compatibility fallback for existing deployments. New deployments should use `VITE_API_URL`. Vite also retains an optional same-origin development proxy configured by:
 
 ```text
-API_PROXY_TARGET=http://host.docker.internal:8000
+API_PROXY_TARGET=http://127.0.0.1:8000
 ```
 
-The proxy is defined in `front end/vite.config.ts`.
+The proxy is used when `VITE_API_URL` is empty. It forwards `/api` unchanged because the backend now exposes the same prefix.
 
 ## API Calls
 
@@ -62,16 +77,18 @@ The API helper file is `front end/src/api.ts`.
 The frontend uses these backend endpoints:
 
 ```text
-GET  /
-POST /dataset/upload
-POST /config/build
-POST /train/run
-POST /train/stop
+GET  /api/health
+POST /api/dataset/upload
+POST /api/config/build
+POST /api/train/run
+POST /api/train/stop
+POST /api/evaluation/start
+GET  /api/evaluation/status/{job_id}
 ```
 
 ### Dataset Upload
 
-`POST /dataset/upload` receives:
+`POST /api/dataset/upload` receives:
 
 - `forget_set`: required file.
 - `retain_set`: optional file.
@@ -84,19 +101,41 @@ The frontend expects the response to include:
 - row counts
 - preview rows
 
-These processed parquet paths are then passed into `/config/build` and `/train/run`.
+These processed parquet paths are then passed into `/api/config/build` and `/api/train/run`.
 
 ### Config Build
 
-`POST /config/build` validates the complete training request and returns the final orchestrator JSON.
+`POST /api/config/build` validates the complete training request and returns the final orchestrator JSON.
 
 The UI displays this JSON so the user can inspect the exact payload before launching training.
 
 ### Training Run
 
-`POST /train/run` sends the same validated training request and waits for the backend response. The backend runs the training workload in a dedicated child process.
+`POST /api/train/run` sends the same validated training request and waits for the backend response. The backend runs the training workload in a dedicated child process.
 
-While the request is active, the frontend replaces the run button with a stop button. `POST /train/stop` terminates the active training child process without stopping FastAPI. The original run request then returns a stopped result. The request remains synchronous, so the frontend shows a running state until training finishes or is stopped. The architecture document notes future progress streaming; when that is added, this UI can be extended with a live progress panel.
+While the request is active, the frontend replaces the run button with a stop button. `POST /api/train/stop` terminates the active training child process without stopping FastAPI. The original run request then returns a stopped result. The request remains synchronous, so the frontend shows a running state until training finishes or is stopped. The architecture document notes future progress streaming; when that is added, this UI can be extended with a live progress panel.
+
+### Evaluation
+
+Evaluation is a separate fifth project stage unlocked after successful
+unlearning. The user supplies a sentence-transformers repository name or local
+path. The page starts a background job and polls its status endpoint to show
+model loading, language-model scoring, model removal, cosine similarity,
+ROUGE-L, and final aggregation updates.
+
+On completion, grouped comparison plots and a detailed table show pre- and
+post-unlearning forget quality, model utility, dataset perplexities,
+conditional probabilities, ROUGE-L, and retain-set cosine similarity. Blue is
+used consistently for pre-unlearning and green for post-unlearning.
+
+## Local Development
+
+The normal development origins are:
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:8000`
+
+The browser calls FastAPI directly at `http://localhost:8000/api/*`. FastAPI explicitly allows the frontend origin through `CORS_ALLOWED_ORIGINS`; credentials are disabled because the application does not use cookies or HTTP authentication. Copy `.env.example` when a different frontend environment is needed, and restart Vite after changing its environment values.
 
 ## UI Workflow
 
@@ -112,6 +151,7 @@ Primary areas:
 - Dataset preview.
 - Orchestrator config preview.
 - Training result output.
+- Evaluation configuration, live progress, and pre/post comparison dashboard.
 
 ## Form Behavior
 

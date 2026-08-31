@@ -11,8 +11,9 @@ BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 FRONTEND_IMAGE="${FRONTEND_IMAGE:-ascent-unlearning-frontend}"
 FRONTEND_CONTAINER="${FRONTEND_CONTAINER:-ascent-unlearning-frontend-dev}"
-VITE_API_BASE_URL="${VITE_API_BASE_URL:-/api}"
+VITE_API_URL="${VITE_API_URL-http://localhost:${BACKEND_PORT}}"
 API_PROXY_TARGET="${API_PROXY_TARGET:-http://host.docker.internal:${BACKEND_PORT}}"
+CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS-http://localhost:${FRONTEND_PORT},http://127.0.0.1:${FRONTEND_PORT}}"
 
 backend_pid=""
 frontend_pid=""
@@ -77,7 +78,7 @@ printf 'Starting backend on http://localhost:%s...\n' "${BACKEND_PORT}"
 set -m
 (
   cd "${ROOT_DIR}"
-  exec "${PYTHON_BIN}" -m uvicorn main:app \
+  CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS}" exec "${PYTHON_BIN}" -m uvicorn main:app \
     --host "${BACKEND_HOST}" \
     --port "${BACKEND_PORT}" \
     --reload
@@ -90,7 +91,7 @@ docker run --rm \
   --name "${FRONTEND_CONTAINER}" \
   --add-host=host.docker.internal:host-gateway \
   -p "${FRONTEND_PORT}:5173" \
-  -e "VITE_API_BASE_URL=${VITE_API_BASE_URL}" \
+  -e "VITE_API_URL=${VITE_API_URL}" \
   -e "API_PROXY_TARGET=${API_PROXY_TARGET}" \
   "${FRONTEND_IMAGE}" &
 frontend_pid=$!

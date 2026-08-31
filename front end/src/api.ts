@@ -2,15 +2,14 @@ import type {
   ConfigBuildResponse,
   DatasetUploadResponse,
   EvaluationRequest,
+  EvaluationJobStatus,
   EvaluationResponse,
+  EvaluationStartResponse,
   FinalTrainingConfigRequest,
   TrainRunResponse,
   TrainStopResponse
 } from "./types";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
-const EVALUATION_ENDPOINT =
-  import.meta.env.VITE_EVALUATION_ENDPOINT || `${API_BASE}/evaluation/run`;
+import { API_BASE_URL, apiUrl } from "./apiConfig";
 
 async function readJson<T>(response: Response): Promise<T> {
   const payload = await response.json().catch(() => ({}));
@@ -29,12 +28,12 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 export async function checkBackend() {
-  const response = await fetch(`${API_BASE}/`);
+  const response = await fetch(apiUrl("health"));
   return readJson<{ message: string }>(response);
 }
 
 export async function uploadDatasets(formData: FormData) {
-  const response = await fetch(`${API_BASE}/dataset/upload`, {
+  const response = await fetch(apiUrl("dataset/upload"), {
     method: "POST",
     body: formData
   });
@@ -43,7 +42,7 @@ export async function uploadDatasets(formData: FormData) {
 }
 
 export async function buildConfig(payload: FinalTrainingConfigRequest) {
-  const response = await fetch(`${API_BASE}/config/build`, {
+  const response = await fetch(apiUrl("config/build"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
@@ -52,7 +51,7 @@ export async function buildConfig(payload: FinalTrainingConfigRequest) {
 }
 
 export async function runTraining(payload: FinalTrainingConfigRequest) {
-  const response = await fetch(`${API_BASE}/train/run`, {
+  const response = await fetch(apiUrl("train/run"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
@@ -62,14 +61,28 @@ export async function runTraining(payload: FinalTrainingConfigRequest) {
 }
 
 export async function stopTraining() {
-  const response = await fetch(`${API_BASE}/train/stop`, {
+  const response = await fetch(apiUrl("train/stop"), {
     method: "POST"
   });
   return readJson<TrainStopResponse>(response);
 }
 
+export async function startEvaluation(payload: EvaluationRequest) {
+  const response = await fetch(apiUrl("evaluation/start"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  return readJson<EvaluationStartResponse>(response);
+}
+
+export async function getEvaluationStatus(jobId: string) {
+  const response = await fetch(apiUrl(`evaluation/status/${jobId}`));
+  return readJson<EvaluationJobStatus>(response);
+}
+
 export async function runEvaluation(payload: EvaluationRequest) {
-  const response = await fetch(EVALUATION_ENDPOINT, {
+  const response = await fetch(apiUrl("evaluation/run"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
@@ -78,7 +91,7 @@ export async function runEvaluation(payload: EvaluationRequest) {
 }
 
 export async function getLoraTargetModules(): Promise<string[]> {
-  const response = await fetch(`${API_BASE}/openapi.json`);
+  const response = await fetch(`${API_BASE_URL}/openapi.json`);
   const openApi = await readJson<Record<string, unknown>>(response);
   const components = openApi.components as Record<string, unknown> | undefined;
   const schemas = components?.schemas as Record<string, unknown> | undefined;

@@ -14,11 +14,10 @@ The backend currently supports:
 - Hyperparameter validation.
 - Construction of a single orchestrator JSON.
 - Running the orchestrator from a FastAPI endpoint.
+- Evaluation of a saved unlearned model on the forget and retain sets.
 
 The next planned modules are:
 
-- Evaluation pipeline.
-- Frontend UI.
 - Training progress streaming from trainer callbacks back to FastAPI.
 
 ---
@@ -28,10 +27,16 @@ The next planned modules are:
 ```text
 ├── config
 │   ├── __init__.py
+│   ├── api_config.py
 │   └── training_config.py
 ├── dataset
 │   ├── __init__.py
 │   └── dataset_loader.py
+├── eval
+│   ├── __init__.py
+│   └── eval_utils.py
+├── eval_orchestrator.py
+├── evaluation_process.py
 ├── gpu
 │   ├── __init__.py
 │   └── gpu_utils.py
@@ -45,6 +50,7 @@ The next planned modules are:
 │   ├── __init__.py
 │   ├── config_routes.py
 │   ├── dataset_routes.py
+│   ├── evaluation_routes.py
 │   ├── model_routes.py
 │   └── train_routes.py
 ├── schemas.py
@@ -71,17 +77,35 @@ Entry point for the FastAPI app.
 Responsibilities:
 
 - Create the FastAPI app.
-- Register route modules.
-- Provide a health/home endpoint.
+- Register route modules under the canonical `/api` prefix.
+- Configure CORS from `CORS_ALLOWED_ORIGINS`.
+- Provide `/api/health` and the backward-compatible `/` health endpoint.
 
-Expected routers:
+The route modules retain their domain prefixes and are composed under one API router:
 
 ```python
-app.include_router(model_router)
-app.include_router(dataset_router)
-app.include_router(config_router)
-app.include_router(train_router)
+api_router = APIRouter(prefix="/api")
+api_router.include_router(model_router)
+api_router.include_router(dataset_router)
+api_router.include_router(config_router)
+api_router.include_router(train_router)
+app.include_router(api_router)
 ```
+
+The original unprefixed routes are also registered as hidden compatibility aliases, and `/docs`, `/redoc`, and `/openapi.json` remain available through compatibility redirects or aliases. New clients should use `/api/*`; the compatibility paths can be removed in a future breaking release after external callers have migrated.
+
+### API and CORS configuration
+
+`config/api_config.py` reads `CORS_ALLOWED_ORIGINS` as a comma-separated list of explicit browser origins. If the variable is unset, local development allows:
+
+```text
+http://localhost:5173
+http://127.0.0.1:5173
+```
+
+Wildcard origins are rejected. The current application does not use cookie or HTTP-auth credentials, so `allow_credentials` is `False`. Allowed methods and headers are limited to those used by the current JSON and multipart API calls.
+
+Production deployments should set `CORS_ALLOWED_ORIGINS` to the deployed frontend origin or origins. An empty value disables cross-origin browser access, which is appropriate when a reverse proxy serves the frontend and `/api` from the same origin.
 
 ---
 
@@ -463,6 +487,38 @@ The orchestrator should be kept compatible with the active local trainer version
 
 ---
 
+### 3.11 Evaluation pipeline
+
+`POST /api/evaluation/start` accepts the `orchestrator_config` and
+`training_result` returned by `/api/train/run`, plus a required user-selected
+sentence-transformers repository name or local path. It returns a job id.
+`GET /api/evaluation/status/{job_id}` returns the current phase, the full
+progress history, and eventually the comparison result. The older blocking
+`POST /api/evaluation/run` remains available for compatibility.
+
+`eval_orchestrator.py`:
+
+- Loads the original pre-unlearning model, calculates conditional probability,
+  perplexity, and generations for both datasets, persists them, and removes the
+  model.
+- Loads the saved unlearnt full model or PEFT adapter, calculates and persists
+  the same language-model outputs, and removes the model.
+- Reloads the processed forget and retain datasets used for training.
+- Derives bounded generation lengths when `num_tokens` is absent.
+- Only after both language models have been removed, loads the requested
+  sentence-transformers model and calculates retain-set cosine similarity.
+- Calculates ROUGE-L for both datasets and aggregates pre/post forget quality
+  and model utility from the persisted columns.
+- Writes four row-level tables under `<model_output_dir>/evaluation/`.
+
+`evaluation_process.py` owns one background evaluation child process and stores
+timestamped progress events in memory for the status endpoint. Training and
+evaluation are mutually exclusive to prevent concurrent GPU workloads.
+
+A retain set is required because model utility cannot be computed without it.
+
+---
+
 ## 4. API Flow
 
 ### Step 1: Start backend
@@ -478,7 +534,7 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 Endpoint:
 
 ```text
-POST /dataset/upload
+POST /api/dataset/upload
 ```
 
 Inputs:
@@ -503,7 +559,7 @@ The frontend should store the returned processed paths and use them in the train
 Endpoint:
 
 ```text
-POST /config/build
+POST /api/config/build
 ```
 
 Purpose:
@@ -519,7 +575,7 @@ Purpose:
 Endpoint:
 
 ```text
-POST /train/run
+POST /api/train/run
 ```
 
 Purpose:
@@ -534,16 +590,44 @@ The HTTP request remains synchronous and waits until training finishes. Only one
 The active run can be stopped with:
 
 ```text
-POST /train/stop
+POST /api/train/stop
 ```
 
-This terminates the training child process while leaving FastAPI running. The pending `/train/run` request then returns with `status = "stopped"`.
+This terminates the training child process while leaving FastAPI running. The pending `/api/train/run` request then returns with `status = "stopped"`.
 
 Future behavior should be asynchronous:
 
 - Start job.
 - Return `job_id`.
 - Stream logs/progress via polling, Server-Sent Events, or WebSocket.
+
+---
+
+### Step 5: Evaluate the trained model
+
+Endpoints:
+
+```text
+POST /api/evaluation/start
+GET  /api/evaluation/status/{job_id}
+```
+
+Request:
+
+```json
+{
+  "orchestrator_config": {},
+  "training_result": {
+    "output_dir": "outputs/run/forget_retain"
+  },
+  "embedding_model_name": "/models/my-sentence-transformer",
+  "max_new_tokens": 256
+}
+```
+
+The frontend supplies the complete training response objects. The embedding
+model is required input; it may be a Hugging Face repository name or a local
+path. The generation limit defaults to 256.
 
 ---
 
@@ -555,7 +639,7 @@ Frontend / Swagger / curl
         v
 FastAPI Routes
         |
-        |-- /dataset/upload
+        |-- /api/dataset/upload
         |       |
         |       v
         |   dataset_loader.py
@@ -563,7 +647,7 @@ FastAPI Routes
         |       v
         |   processed parquet paths
         |
-        |-- /config/build
+        |-- /api/config/build
         |       |
         |       v
         |   training_config.py
@@ -571,13 +655,13 @@ FastAPI Routes
         |       v
         |   orchestrator JSON
         |
-        |-- /train/run
+        |-- /api/train/run
                 |
                 v
         training_process.py
                 |
                 |-- spawn one training child process
-                |-- terminate it on /train/stop
+                |-- terminate it on /api/train/stop
                 v
             orchestrator.py (child process)
                 |
@@ -590,6 +674,21 @@ FastAPI Routes
                 |-- save model/tokenizer
                 v
             output directory + metrics
+        |
+        |-- /api/evaluation/start
+                |
+                v
+        evaluation_process.py
+                |
+                v
+        eval_orchestrator.py (child process)
+                |
+                |-- score + remove pre-unlearning model
+                |-- score + remove unlearnt model
+                |-- load embedding model and compute similarity
+                |-- compute ROUGE-L, forget quality, model utility
+                v
+            progress status + comparison metrics + four parquet files
 ```
 
 ---
@@ -636,135 +735,52 @@ For `method = "lora"`:
 
 ---
 
-## 7. Frontend Recommendation
+## 7. Frontend Integration
 
-Because this project is running on a university server without sudo access, the first frontend should avoid a heavy TypeScript/Node setup.
+The implemented frontend is the Vite, React, and TypeScript application in `front end/`. Browser requests flow through `front end/src/apiConfig.ts` and `front end/src/api.ts`:
 
-Recommended order:
-
-### Option A: Streamlit first
-
-Best for fast internal UI.
-
-Advantages:
-
-- Python-only.
-- Can be installed inside the existing `uv` virtual environment.
-- Easy file upload widgets.
-- Easy forms for hyperparameters.
-- Easy API calls to FastAPI with `requests`.
-
-Install:
-
-```bash
-uv pip install streamlit requests
+```text
+React components
+      |
+      v
+api.ts + apiConfig.ts
+      |
+      | HTTP/JSON to VITE_API_URL + /api
+      v
+FastAPI route modules
+      |
+      v
+Existing config, dataset, model, and training services
 ```
 
-Run:
+`VITE_API_URL` is the backend origin, without the `/api` suffix. It defaults to `http://localhost:8000`; setting it to an empty string selects same-origin `/api` URLs for a reverse-proxy deployment. Vite substitutes this value when the development server starts or the production bundle is built.
 
-```bash
-streamlit run frontend_app.py --server.address 0.0.0.0 --server.port 8501
-```
-
-Suggested use:
-
-- Build first prototype UI.
-- Upload forget/retain datasets.
-- Enter model config.
-- Enter hyperparameters.
-- Submit to FastAPI.
-
-### Option B: Gradio
-
-Good for ML demos and simple model-control interfaces.
-
-Install:
-
-```bash
-uv pip install gradio requests
-```
-
-Run a Python UI that calls FastAPI endpoints.
-
-### Option C: React + TypeScript later
-
-Use this only after the backend stabilizes.
-
-Advantages:
-
-- Better long-term frontend.
-- Better state management.
-- Better user experience.
-
-Disadvantages for current setup:
-
-- Requires Node/npm tooling.
-- More learning overhead.
-- More files and deployment complexity.
-
-If Node is already available on the server, Vite can scaffold a React/TypeScript frontend without sudo:
-
-```bash
-npm create vite@latest frontend -- --template react-ts
-cd frontend
-npm install
-npm run dev -- --host 0.0.0.0
-```
-
-If Node is not available, avoid TypeScript for now and start with Streamlit.
+The older `VITE_API_BASE_URL` setting remains a frontend compatibility fallback, but new configuration should use `VITE_API_URL`. The optional Vite `/api` proxy no longer strips the prefix because FastAPI now exposes `/api` routes directly.
 
 ---
 
 ## 8. Suggested Next Steps
 
-### Immediate next step
+### Deployment next step
 
-Build a minimal Streamlit frontend:
-
-1. Dataset upload page.
-2. Model config form.
-3. Hyperparameter form.
-4. Config preview page.
-5. Run training button.
+Serve the built frontend and FastAPI behind a production reverse proxy, set `VITE_API_URL` for the chosen public API origin, and set `CORS_ALLOWED_ORIGINS` to the exact public frontend origin when the two origins differ.
 
 ### Backend next step
 
 Add job management:
 
 ```text
-POST /train/start
-GET /train/status/{job_id}
-GET /train/logs/{job_id}
+POST /api/train/start
+GET /api/train/status/{job_id}
+GET /api/train/logs/{job_id}
 ```
 
-Instead of blocking inside `/train/run`.
+Instead of blocking inside `/api/train/run`.
 
 ### Evaluation next step
 
-Add an `evaluation/` module:
-
-```text
-evaluation
-├── __init__.py
-├── evaluator.py
-└── metrics.py
-```
-
-Possible endpoints:
-
-```text
-POST /evaluate/run
-GET /evaluate/status/{job_id}
-```
-
-Evaluation config should include:
-
-- Model output path.
-- Evaluation dataset path.
-- Metrics.
-- Batch size.
-- Max generation tokens.
-- Device/GPU id.
+Move the synchronous evaluation call to the same future job/status API used by
+training and add an evaluation stop endpoint.
 
 ---
 
@@ -785,4 +801,4 @@ When editing this project:
 6. Processed dataset paths, not raw uploaded paths, should be used for training.
 7. For training adapters, keep PEFT adapter attached and trainable.
 8. For selected GPU, set `CUDA_VISIBLE_DEVICES` before loading model.
-9. Future frontend should first use Streamlit unless a full React/TypeScript app is required.
+9. Frontend requests should go through `front end/src/api.ts` and `apiConfig.ts`; do not hardcode backend URLs in components.

@@ -6,6 +6,7 @@ import DataStage from "../components/stages/DataStage";
 import HyperparametersStage from "../components/stages/HyperparametersStage";
 import ModelStage from "../components/stages/ModelStage";
 import RunningStage from "../components/stages/RunningStage";
+import EvaluationStage from "../components/stages/EvaluationStage";
 import { ProjectProvider, useProject } from "../state/ProjectContext";
 import { getProject } from "../storage/projectStorage";
 import type { Project, ProjectStage } from "../types";
@@ -21,7 +22,8 @@ function StageContent({ stage }: { stage: ProjectStage }) {
   if (stage === "data") return <DataStage />;
   if (stage === "model") return <ModelStage />;
   if (stage === "hyperparameters") return <HyperparametersStage />;
-  return <RunningStage />;
+  if (stage === "running") return <RunningStage />;
+  return <EvaluationStage />;
 }
 
 function ProjectWorkspace({ requestedStage }: { requestedStage?: string }) {

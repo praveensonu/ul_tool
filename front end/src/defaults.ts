@@ -25,7 +25,8 @@ export function createDefaultProject(name = "Untitled project"): Project {
       data: false,
       model: false,
       hyperparameters: false,
-      running: false
+      running: false,
+      evaluation: false
     },
     data: {
       sourceMode: "upload",
@@ -66,20 +67,23 @@ export function createDefaultProject(name = "Untitled project"): Project {
       config: null,
       training: null,
       message: null,
-      evaluationRequested: false,
+      embeddingModelName: "",
+      evaluationMaxNewTokens: 256,
+      evaluationJob: null,
       evaluation: null,
       evaluationMessage: null
     }
   };
 }
 
-function migratedCompletion(lastStage: ProjectStage, hasTraining: boolean): CompletedStages {
-  const stageIndex = ["data", "model", "hyperparameters", "running"].indexOf(lastStage);
+function migratedCompletion(lastStage: ProjectStage, hasTraining: boolean, hasEvaluation: boolean): CompletedStages {
+  const stageIndex = ["data", "model", "hyperparameters", "running", "evaluation"].indexOf(lastStage);
   return {
     data: stageIndex >= 1,
     model: stageIndex >= 2,
     hyperparameters: stageIndex >= 3,
-    running: hasTraining
+    running: hasTraining,
+    evaluation: stageIndex >= 4 && hasEvaluation
   };
 }
 
@@ -89,7 +93,8 @@ export function normalizeProject(value: unknown): Project {
   const lastStage: ProjectStage =
     raw.lastStage === "model" ||
     raw.lastStage === "hyperparameters" ||
-    raw.lastStage === "running"
+    raw.lastStage === "running" ||
+    raw.lastStage === "evaluation"
       ? raw.lastStage
       : "data";
 
@@ -97,7 +102,11 @@ export function normalizeProject(value: unknown): Project {
   const rawData = (raw.data ?? {}) as Partial<Project["data"]>;
   const rawModel = (raw.model ?? {}) as Partial<Project["model"]>;
   const rawHyperparameters = (raw.hyperparameters ?? {}) as Partial<Project["hyperparameters"]>;
-  const completion = raw.completedStages ?? migratedCompletion(lastStage, rawRun.training !== null && rawRun.training !== undefined);
+  const completion = raw.completedStages ?? migratedCompletion(
+    lastStage,
+    rawRun.training !== null && rawRun.training !== undefined,
+    rawRun.evaluation !== null && rawRun.evaluation !== undefined
+  );
 
   return {
     ...base,

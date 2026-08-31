@@ -1,6 +1,6 @@
 import type { Project, ProjectStage } from "../types";
 
-const stageOrder: ProjectStage[] = ["data", "model", "hyperparameters", "running"];
+const stageOrder: ProjectStage[] = ["data", "model", "hyperparameters", "running", "evaluation"];
 
 export function isDataValid(project: Project) {
   const sourceOk =
@@ -49,7 +49,8 @@ export function isStageValid(project: Project, stage: ProjectStage) {
   if (stage === "data") return isDataValid(project);
   if (stage === "model") return isModelValid(project);
   if (stage === "hyperparameters") return isHyperparametersValid(project);
-  return true;
+  if (stage === "running") return project.run.training?.status === "success";
+  return project.run.evaluation?.status === "success";
 }
 
 export function isStageComplete(project: Project, stage: ProjectStage) {
@@ -62,10 +63,14 @@ export function canAccessStage(project: Project, stage: ProjectStage) {
   if (stage === "hyperparameters") {
     return project.completedStages.data && project.completedStages.model;
   }
-  return (
+  if (stage === "running") return (
     project.completedStages.data &&
     project.completedStages.model &&
     project.completedStages.hyperparameters
+  );
+  return (
+    project.completedStages.running &&
+    project.run.training?.status === "success"
   );
 }
 

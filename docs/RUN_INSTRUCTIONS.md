@@ -16,7 +16,7 @@ This builds the existing frontend Docker image and starts the existing backend a
 http://localhost:5173
 ```
 
-The frontend proxies API calls from `http://localhost:5173/api` to the backend on port `8000`. Press `Ctrl+C` to terminate the backend process group and stop the frontend container.
+The browser calls `http://localhost:8000/api` directly, and FastAPI allows the development frontend origin `http://localhost:5173`. Press `Ctrl+C` to terminate the backend process group and stop the frontend container.
 
 Ports and environment settings can be overridden if necessary:
 
@@ -28,13 +28,13 @@ See the root `README.md` for all supported overrides.
 
 ## Run Services Individually
 
-Use the following commands when developing or debugging one service at a time. Start the backend before the frontend. If the backend is not running, browser actions such as dataset upload can fail with:
+Use the following commands when developing or debugging one service at a time. Start the backend before the frontend. If the backend is not running, browser actions such as dataset upload can fail with a network error such as:
 
 ```text
-Request failed with status 502
+Failed to fetch
 ```
 
-That `502` means the Vite frontend container is running, but its proxy cannot reach the FastAPI backend.
+This normally means the configured `VITE_API_URL` is unreachable. A browser CORS error instead means the frontend origin is missing from `CORS_ALLOWED_ORIGINS`.
 
 ### Start Backend
 
@@ -53,7 +53,7 @@ http://localhost:8000
 Check the backend:
 
 ```bash
-curl -s http://127.0.0.1:8000/
+curl -s http://127.0.0.1:8000/api/health
 ```
 
 Expected response:
@@ -61,6 +61,11 @@ Expected response:
 ```json
 {"message":"LLM training API is running"}
 ```
+
+After a successful training response, the frontend unlocks its Evaluation
+stage. Enter a sentence-transformers repository name or local path, start the
+job, and keep the page open while it polls `/api/evaluation/status/{job_id}`.
+Evaluation requires the training run to include a retain set.
 
 ### Stop Backend
 
@@ -94,10 +99,8 @@ From the repository root:
 ```bash
 docker run -d \
   --name ascent-unlearning-frontend-dev \
-  --add-host=host.docker.internal:host-gateway \
   -p 5173:5173 \
-  -e VITE_API_BASE_URL=/api \
-  -e API_PROXY_TARGET=http://host.docker.internal:8000 \
+  -e VITE_API_URL=http://localhost:8000 \
   ascent-unlearning-frontend
 ```
 
@@ -107,7 +110,7 @@ Open:
 http://localhost:5173
 ```
 
-The frontend expects the backend to be running on port `8000`.
+The frontend expects the backend to be running on port `8000`. `localhost` is correct here because `VITE_API_URL` is used by the browser, not by the frontend container.
 
 ### Stop Frontend Container
 
@@ -121,10 +124,8 @@ docker rm -f ascent-unlearning-frontend-dev
 docker rm -f ascent-unlearning-frontend-dev
 docker run -d \
   --name ascent-unlearning-frontend-dev \
-  --add-host=host.docker.internal:host-gateway \
   -p 5173:5173 \
-  -e VITE_API_BASE_URL=/api \
-  -e API_PROXY_TARGET=http://host.docker.internal:8000 \
+  -e VITE_API_URL=http://localhost:8000 \
   ascent-unlearning-frontend
 ```
 
@@ -135,10 +136,10 @@ docker ps --filter name=ascent-unlearning-frontend-dev
 docker logs --tail 80 ascent-unlearning-frontend-dev
 ```
 
-Check that the frontend proxy can reach the backend:
+Check the canonical API health endpoint from the host:
 
 ```bash
-docker exec ascent-unlearning-frontend-dev wget -qO- http://127.0.0.1:5173/api/
+curl -s http://127.0.0.1:8000/api/health
 ```
 
 Expected response:
@@ -147,7 +148,7 @@ Expected response:
 {"message":"LLM training API is running"}
 ```
 
-If this returns `502 Bad Gateway`, start the backend with:
+If this fails, start the backend with:
 
 ```bash
 .venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
@@ -155,17 +156,27 @@ If this returns `502 Bad Gateway`, start the backend with:
 
 ### Use A Different Backend URL
 
-Change `API_PROXY_TARGET` when starting the container:
+Change `VITE_API_URL` when starting the container. This value must be a URL the user's browser can reach:
 
 ```bash
 docker run -d \
   --name ascent-unlearning-frontend-dev \
-  --add-host=host.docker.internal:host-gateway \
   -p 5173:5173 \
-  -e VITE_API_BASE_URL=/api \
-  -e API_PROXY_TARGET=http://192.168.1.20:8000 \
+  -e VITE_API_URL=http://192.168.1.20:8000 \
   ascent-unlearning-frontend
 ```
+
+Also include `http://localhost:5173` (or the actual frontend origin) in the backend's comma-separated `CORS_ALLOWED_ORIGINS` value.
+
+## Environment Configuration
+
+The checked-in examples are `.env.example` for FastAPI and `front end/.env.example` for Vite.
+
+- `CORS_ALLOWED_ORIGINS`: comma-separated exact browser origins allowed by FastAPI. It defaults to `http://localhost:5173,http://127.0.0.1:5173`. Set it in the backend process environment; Uvicorn does not read the example file automatically.
+- `VITE_API_URL`: backend origin visible to the browser, without `/api`. It defaults to `http://localhost:8000` in the frontend client.
+- `API_PROXY_TARGET`: optional Vite proxy target. It is only needed when `VITE_API_URL` is empty and the browser uses same-origin `/api` URLs.
+
+For a same-origin production deployment, build the frontend with an empty `VITE_API_URL`, route `/api` to FastAPI in the reverse proxy, and set `CORS_ALLOWED_ORIGINS` to an empty value. For different public origins, set both variables to the exact public URLs; do not use `*`.
 
 ### Docker Compose Optional
 

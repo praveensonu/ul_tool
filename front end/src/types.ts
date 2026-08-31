@@ -1,7 +1,7 @@
 export type Method = "full" | "lora" | "adaptor";
 export type StepMode = "max_steps" | "epochs";
 export type LoraTarget = string;
-export type ProjectStage = "data" | "model" | "hyperparameters" | "running";
+export type ProjectStage = "data" | "model" | "hyperparameters" | "running" | "evaluation";
 export type DataSourceMode = "upload" | "extract";
 
 export type BackendPreviewRow = {
@@ -103,13 +103,68 @@ export type TrainStopResponse = {
 
 export type EvaluationRequest = {
   orchestrator_config: Record<string, unknown>;
-  training_result: Record<string, unknown> | null;
+  training_result: Record<string, unknown>;
+  embedding_model_name: string;
+  embedding_batch_size?: number;
+  max_new_tokens?: number;
+};
+
+export type ForgetQualityScores = {
+  evaluated_rows: number;
+  score: number;
+  average_perplexity: number;
+  mean_conditional_probability: number;
+  mean_rouge_l: number;
+  component_scores: number[];
+};
+
+export type ModelUtilityScores = {
+  evaluated_rows: number;
+  score: number;
+  average_perplexity: number;
+  mean_conditional_probability: number;
+  mean_rouge_l: number;
+  mean_cosine_similarity: number;
+  component_scores: number[];
+};
+
+export type ModelEvaluationScores = {
+  forget_quality: ForgetQualityScores;
+  model_utility: ModelUtilityScores;
 };
 
 export type EvaluationResponse = {
-  status: string;
-  message?: string;
-  [key: string]: unknown;
+  status: "success";
+  model_path: string;
+  embedding_model_name: string;
+  forget_set_path: string;
+  retain_set_path: string;
+  pre_unlearning: ModelEvaluationScores;
+  post_unlearning: ModelEvaluationScores;
+  output_files: Record<string, string>;
+  message: string;
+};
+
+export type EvaluationProgressEvent = {
+  stage: string;
+  message: string;
+  timestamp: string;
+};
+
+export type EvaluationStartResponse = {
+  job_id: string;
+  status: "queued" | "running";
+  message: string;
+};
+
+export type EvaluationJobStatus = {
+  job_id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  current_stage: string;
+  message: string;
+  progress: EvaluationProgressEvent[];
+  result: EvaluationResponse | null;
+  error: string | null;
 };
 
 export type ProjectDataConfig = {
@@ -164,7 +219,9 @@ export type ProjectRunState = {
   config: ConfigBuildResponse | null;
   training: TrainRunResponse | null;
   message: string | null;
-  evaluationRequested: boolean;
+  embeddingModelName: string;
+  evaluationMaxNewTokens: number;
+  evaluationJob: EvaluationJobStatus | null;
   evaluation: EvaluationResponse | null;
   evaluationMessage: string | null;
 };
@@ -174,6 +231,7 @@ export type CompletedStages = {
   model: boolean;
   hyperparameters: boolean;
   running: boolean;
+  evaluation: boolean;
 };
 
 export type Project = {
