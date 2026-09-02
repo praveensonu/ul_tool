@@ -55,9 +55,24 @@ The next planned modules are:
 │   └── train_routes.py
 ├── schemas.py
 ├── unlearning
+│   ├── base.py
 │   ├── data_helpers
 │   │   ├── collators.py
-│   │   └── data_module.py
+│   │   ├── data_module.py
+│   │   └── idk.jsonl
+│   ├── dpo
+│   │   ├── losses.py
+│   │   └── trainer.py
+│   ├── ga
+│   │   ├── losses.py
+│   │   └── trainer.py
+│   ├── gd
+│   │   ├── losses.py
+│   │   └── trainer.py
+│   ├── methods.py
+│   ├── npo
+│   │   ├── losses.py
+│   │   └── trainer.py
 │   └── snpo
 │       ├── losses.py
 │       └── trainer.py
@@ -367,49 +382,28 @@ Responsibilities:
 - Save model/tokenizer output.
 - Clear GPU memory after training.
 
-Training modes:
+Unlearning method selection:
 
-#### Forget-only mode
+`orchestrator_config["unlearning"]["method"]` picks the method, and
+`build_unlearning_run()` resolves it to a dataset, collator, trainer class and the
+trainer's hardcoded arguments:
 
-Triggered when:
+| Method | Dataset | Collator | Trainer |
+|---|---|---|---|
+| `grad_ascent` | `ForgetOnlyDataset` | `ForgetCollator` | `GradAscentTrainer` |
+| `grad_diff` | `ForgetRetainDataset` | `RetainCollator` | `GradDiffTrainer` |
+| `npo` | `ForgetRetainDataset` | `RetainCollator` | `NPOTrainer` |
+| `dpo` | `IdkForgetRetainDataset` | `DpoRetainCollator` | `DPOTrainer` |
+| `simnpo` | `ForgetRetainDataset` | `RetainCollator` | `SimNPOForgetRetainTrainer` |
 
-```python
-retain_set_path is None
-```
+`grad_diff`, `npo` and `dpo` require a retain set; the schema rejects a request without
+one. `grad_ascent` has no retain term and ignores a retain set if one was uploaded.
+`simnpo` falls back to `ForgetOnlyDataset` + `SimNPOForgetOnlyTrainer` when no retain set
+is given.
 
-Uses:
 
-```text
-ForgetOnlyDataset
-ForgetCollator
-SimNPOForgetOnlyTrainer
-```
-
-#### Forget-retain mode
-
-Triggered when:
-
-```python
-retain_set_path is not None
-```
-
-Uses:
-
-```text
-ForgetRetainDataset
-RetainCollator
-SimNPOForgetRetainTrainer
-```
-
-Important integration detail:
-
-`unlearning/snpo/trainer.py` imports `losses` as a local module. Therefore, `orchestrator.py` adds:
-
-```python
-unlearning/snpo
-```
-
-to `sys.path` before importing the trainer.
+`run_type` — and therefore the output subdirectory — is
+`{method}_{forget_only|forget_retain}`.
 
 ---
 
@@ -432,9 +426,15 @@ Dataset classes:
 ```text
 ForgetOnlyDataset
 ForgetRetainDataset
+IdkForgetRetainDataset
 ```
 
 `ForgetRetainDataset` samples forget examples sequentially and retain examples randomly.
+
+`IdkForgetRetainDataset` (used by DPO) adds a third, preferred answer per forget example.
+It reads that answer from an `alternate` column when the forget data has one, otherwise it
+samples a random line from `unlearning/data_helpers/idk.jsonl` — a verbatim copy of the
+100 "I don't know" responses open-unlearning uses for its own DPO runs.
 
 This module should remain unchanged unless the data format or loss-masking logic changes.
 
@@ -449,6 +449,7 @@ Available collators:
 ```text
 ForgetCollator
 RetainCollator
+DpoRetainCollator
 ```
 
 `ForgetCollator` returns a dictionary:
@@ -463,27 +464,39 @@ RetainCollator
 
 `RetainCollator` returns paired forget/retain batches.
 
+`DpoRetainCollator` returns forget/alternate/retain triples in that order.
+
 This module should remain unchanged unless the trainer input format changes.
 
 ---
 
-### 3.10 `unlearning/snpo/trainer.py`
+### 3.10 `unlearning/<method>/trainer.py`
 
-Core SimNPO training logic.
-
-Current trainers:
+One folder per unlearning method, each with `losses.py` (the math) and `trainer.py` (a
+Hugging Face `Trainer` subclass overriding `compute_loss`). Algorithms and defaults follow
+[open-unlearning](https://github.com/locuslab/open-unlearning/tree/main/src/trainer/unlearn).
 
 ```text
-SimNPOForgetOnlyTrainer
-SimNPOForgetRetainTrainer
+unlearning/ga/trainer.py     GradAscentTrainer(Trainer)
+unlearning/gd/trainer.py     GradDiffTrainer(Trainer)
+unlearning/npo/trainer.py    NPOTrainer(GradDiffTrainer)
+unlearning/dpo/trainer.py    DPOTrainer(GradDiffTrainer)
+unlearning/snpo/trainer.py   SimNPOForgetOnlyTrainer(Trainer)
+                             SimNPOForgetRetainTrainer(GradDiffTrainer)
 ```
 
-Depending on the current version, trainer implementation may be either:
+`GradDiffTrainer` is the base for every retain-aware method: it owns `compute_retain_loss`
+(`NLL` or `KL`) and `_prepare_ref_model`, a frozen `deepcopy` of the model. NPO and DPO
+always build that reference model, so they hold **two** copies of the model in memory.
 
-1. Direct subclasses of Hugging Face `Trainer`, or
-2. Wrapper classes that internally build a Hugging Face `Trainer`.
+`unlearning/gd/losses.py` also holds the primitives shared across methods —
+`compute_batch_nll`, `compute_dpo_loss`, `compute_kl_divergence` and `to_model_inputs`.
 
-The orchestrator should be kept compatible with the active local trainer version.
+Every trainer descends from `UnlearnTrainer` (`unlearning/base.py`), which mirrors
+open-unlearning's base class: it routes `prediction_step` back to the stock
+`Trainer.compute_loss` (an eval batch is a plain LM batch, not a forget/retain
+structure) and clears `model_accepts_loss_kwargs` so that the forget-only and
+forget/retain batch formats normalise by `gradient_accumulation_steps` identically.
 
 ---
 

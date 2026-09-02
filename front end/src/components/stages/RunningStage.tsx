@@ -4,7 +4,7 @@ import { runTraining, stopTraining, uploadDatasets } from "../../api";
 import { useProject } from "../../state/ProjectContext";
 import type { DatasetUploadResponse } from "../../types";
 import { buildTrainingPayload } from "../../utils/projectPayload";
-import { defaultTemplate } from "../../defaults";
+import { defaultTemplate, unlearningMethodLabels } from "../../defaults";
 
 export default function RunningStage() {
   const { project, setDatasetUpload, updateRun, markStageCompleted } = useProject();
@@ -19,6 +19,7 @@ export default function RunningStage() {
       retain: project.data.preparedRetainFile?.name ?? project.data.retainFile?.name ?? "None",
       model: project.model.modelName,
       method: project.model.method,
+      unlearningMethod: unlearningMethodLabels[project.hyperparameters.unlearningMethod],
       schedule:
         project.hyperparameters.stepMode === "max_steps"
           ? `${project.hyperparameters.maxSteps} max steps`
@@ -139,7 +140,8 @@ export default function RunningStage() {
         <div><span>Forget set</span><strong>{summary.dataset}</strong></div>
         <div><span>Retain set</span><strong>{summary.retain}</strong></div>
         <div><span>Model</span><strong>{summary.model}</strong></div>
-        <div><span>Method</span><strong>{summary.method}</strong></div>
+        <div><span>Model method</span><strong>{summary.method}</strong></div>
+        <div><span>Unlearning method</span><strong>{summary.unlearningMethod}</strong></div>
         <div><span>Schedule</span><strong>{summary.schedule}</strong></div>
         <div><span>Learning rate</span><strong>{project.hyperparameters.learningRate}</strong></div>
       </section>

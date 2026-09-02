@@ -1,4 +1,4 @@
-"""SimNPO collators."""
+"""Unlearning collators."""
 
 import torch
 from transformers import  default_data_collator
@@ -55,6 +55,27 @@ def RetainCollator(samples): # for vanilla/cyclic gradient difference, also can 
     rets = []
     for data_type in ["forget", "retain"]:
         data = forget_samples if data_type == "forget" else retain_samples
+        input_ids = [s[0] for s in data]
+        labels = [s[1] for s in data]
+        attention_mask = [s[2] for s in data]
+        rets.append((torch.stack(input_ids), torch.stack(labels), torch.stack(attention_mask)))
+    return rets
+
+
+def DpoRetainCollator(samples): # for dpo: forget, alternate (preferred) and retain data
+    """
+    Custom data collator for the DPO triples produced by IdkForgetRetainDataset.
+
+    Args:
+        samples: list of tuples (forget_data, alternate_data, retain_data)
+
+    Returns:
+        rets: list of three tuples (input_ids, labels, attention_mask), in that order
+    """
+
+    rets = []
+    for position in range(3):
+        data = [sample[position] for sample in samples]
         input_ids = [s[0] for s in data]
         labels = [s[1] for s in data]
         attention_mask = [s[2] for s in data]

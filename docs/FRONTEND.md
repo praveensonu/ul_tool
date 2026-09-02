@@ -160,9 +160,13 @@ The frontend keeps a local request payload in React state after datasets are upl
 Important rules reflected in the UI:
 
 - Forget dataset is required.
-- Retain dataset is optional.
-- Method can be `full`, `lora`, or `adaptor`.
+- Retain dataset is optional, except for the unlearning methods that need one.
+- Model loading method can be `full`, `lora`, or `adaptor`.
 - LoRA target modules appear only when method is `lora`.
+- The unlearning method dropdown on the hyperparameters stage is populated from
+  `GET /api/config/unlearning-methods`.
+- `grad_diff`, `npo`, and `dpo` block the hyperparameters stage until a retain set is
+  selected.
 - The schedule uses either `max_steps` or `epochs`, not both.
 - `assistant_completions_only` is always sent as `true`.
 - Context length is selected from power-of-two values.

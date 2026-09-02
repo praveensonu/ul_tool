@@ -2,11 +2,38 @@ from enum import Enum
 from typing import Optional, List, Dict, Any, Union, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from unlearning import methods as registry
+
 
 class LoadMethod(str, Enum):
     full = "full"
     lora = "lora"
     adaptor = "adaptor"
+
+
+class UnlearningMethod(str, Enum):
+    grad_ascent = "grad_ascent"
+    grad_diff = "grad_diff"
+    npo = "npo"
+    dpo = "dpo"
+    simnpo = "simnpo"
+
+
+# methods whose loss has a retain term and therefore need a retain set
+RETAIN_REQUIRED_METHODS = frozenset(
+    UnlearningMethod(name) for name in registry.RETAIN_REQUIRED_METHODS
+)
+
+
+class UnlearningMethodInfo(BaseModel):
+    value: UnlearningMethod
+    label: str
+    requires_retain: bool
+
+
+class UnlearningMethodsResponse(BaseModel):
+    methods: List[UnlearningMethodInfo]
+    default: UnlearningMethod
 
 
 class LoadModelRequest(BaseModel):
@@ -113,6 +140,7 @@ class FinalTrainingConfigRequest(BaseModel):
     adaptor_path: Optional[str] = None
     hf_key: Optional[str] = None
     method: LoadMethod
+    unlearning_method: UnlearningMethod = UnlearningMethod.simnpo
     gpu_id: int
 
     forget_set_path: str
@@ -133,6 +161,15 @@ class FinalTrainingConfigRequest(BaseModel):
         if self.method == LoadMethod.adaptor:
             if self.adaptor_path is None:
                 raise ValueError("adaptor_path is required when method='adaptor'.")
+
+        if (
+            self.unlearning_method in RETAIN_REQUIRED_METHODS
+            and self.retain_set_path is None
+        ):
+            raise ValueError(
+                "retain_set_path is required when "
+                f"unlearning_method='{self.unlearning_method.value}'."
+            )
 
         return self
 

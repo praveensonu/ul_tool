@@ -1,3 +1,4 @@
+import { retainRequiredMethods } from "../defaults";
 import type { Project, ProjectStage } from "../types";
 
 const stageOrder: ProjectStage[] = ["data", "model", "hyperparameters", "running", "evaluation"];
@@ -33,9 +34,13 @@ export function isHyperparametersValid(project: Project) {
   const lr = Number(h.learningRate);
   const learningRateOk = Number.isFinite(lr) && lr > 0;
   const contextOk = h.contextLength > 0 && (h.contextLength & (h.contextLength - 1)) === 0;
+  const retainOk =
+    !retainRequiredMethods.includes(h.unlearningMethod) ||
+    Boolean(project.data.preparedRetainFile ?? project.data.retainFile);
 
   return (
     scheduleOk &&
+    retainOk &&
     learningRateOk &&
     contextOk &&
     h.batchSize > 0 &&

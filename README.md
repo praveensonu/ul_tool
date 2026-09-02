@@ -191,7 +191,13 @@ The frontend uses these endpoints to provide the main workflow: upload datasets,
 
 ## Training Configuration Notes
 
-- Supported methods are `full`, `lora`, and `adaptor`.
+- Supported model loading methods are `full`, `lora`, and `adaptor`.
+- Supported unlearning methods are `grad_ascent`, `grad_diff`, `npo`, `dpo`, and `simnpo`,
+  selected with `unlearning_method` (defaults to `simnpo`). 
+- `retain_set_path` is required for `grad_diff`, `npo`, and `dpo`. `grad_ascent` has no
+  retain term and ignores one.
+- `dpo` needs a preferred answer per forget row: it uses an `alternate` column when the
+  forget dataset has one, otherwise it samples from `unlearning/data_helpers/idk.jsonl`.
 - Exactly one of `max_steps` or `epochs` must be set.
 - `context_length` must be a power of two.
 - `assistant_completions_only` is always `true`.

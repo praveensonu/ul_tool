@@ -1,4 +1,10 @@
-import type { CompletedStages, Project, ProjectStage } from "./types";
+import type {
+  CompletedStages,
+  Project,
+  ProjectStage,
+  UnlearningMethod,
+  UnlearningMethodInfo
+} from "./types";
 
 export const defaultTemplate = `<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
@@ -11,6 +17,26 @@ Today Date: 26 July 2024
 `;
 
 export const defaultLoraTargets = ["q_proj", "v_proj", "k_proj", "o_proj"];
+
+export const fallbackUnlearningMethods: UnlearningMethodInfo[] = [
+  { value: "grad_ascent", label: "Gradient Ascent", requires_retain: false },
+  { value: "grad_diff", label: "Gradient Difference", requires_retain: true },
+  { value: "npo", label: "NPO", requires_retain: true },
+  { value: "dpo", label: "DPO", requires_retain: true },
+  { value: "simnpo", label: "SimNPO", requires_retain: false }
+];
+
+export const unlearningMethods: UnlearningMethod[] = fallbackUnlearningMethods.map(
+  (method) => method.value
+);
+
+export const unlearningMethodLabels: Record<UnlearningMethod, string> = Object.fromEntries(
+  fallbackUnlearningMethods.map((method) => [method.value, method.label] as const)
+) as Record<UnlearningMethod, string>;
+
+export const retainRequiredMethods: UnlearningMethod[] = fallbackUnlearningMethods
+  .filter((method) => method.requires_retain)
+  .map((method) => method.value);
 
 export function createDefaultProject(name = "Untitled project"): Project {
   const now = new Date().toISOString();
@@ -53,6 +79,7 @@ export function createDefaultProject(name = "Untitled project"): Project {
       selectedTargets: [...defaultLoraTargets]
     },
     hyperparameters: {
+      unlearningMethod: "simnpo",
       stepMode: "max_steps",
       maxSteps: 100,
       epochs: 1,
@@ -143,6 +170,9 @@ export function normalizeProject(value: unknown): Project {
     hyperparameters: {
       ...base.hyperparameters,
       ...rawHyperparameters,
+      unlearningMethod: unlearningMethods.includes(rawHyperparameters.unlearningMethod as UnlearningMethod)
+        ? (rawHyperparameters.unlearningMethod as UnlearningMethod)
+        : base.hyperparameters.unlearningMethod,
       epochs: Number(rawHyperparameters.epochs ?? base.hyperparameters.epochs) || 1
     },
     run: {

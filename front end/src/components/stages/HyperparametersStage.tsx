@@ -1,11 +1,35 @@
+import { useEffect, useState } from "react";
+import { getUnlearningMethods } from "../../api";
+import { fallbackUnlearningMethods } from "../../defaults";
 import { useProject } from "../../state/ProjectContext";
-import type { StepMode } from "../../types";
+import type { StepMode, UnlearningMethod, UnlearningMethodInfo } from "../../types";
 
 const contextOptions = [512, 1024, 2048, 4096, 8192];
 
 export default function HyperparametersStage() {
   const { project, updateHyperparameters } = useProject();
   const h = project.hyperparameters;
+  const [methods, setMethods] = useState<UnlearningMethodInfo[]>(fallbackUnlearningMethods);
+
+  useEffect(() => {
+    let cancelled = false;
+    getUnlearningMethods()
+      .then((discovered) => {
+        if (!cancelled && discovered.length > 0) {
+          setMethods(discovered);
+        }
+      })
+      .catch(() => {
+        // The backend may be offline during frontend-only development.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selected = methods.find((method) => method.value === h.unlearningMethod);
+  const hasRetainSet = Boolean(project.data.preparedRetainFile ?? project.data.retainFile);
+  const retainMissing = Boolean(selected?.requires_retain) && !hasRetainSet;
 
   function changeMode(mode: StepMode) {
     if (mode === "epochs") {
@@ -24,6 +48,25 @@ export default function HyperparametersStage() {
       </div>
 
       <div className="stage-form">
+        <label className="field">
+          <span>Unlearning method</span>
+          <select
+            value={h.unlearningMethod}
+            onChange={(event) =>
+              updateHyperparameters({ unlearningMethod: event.target.value as UnlearningMethod })
+            }
+          >
+            {methods.map((method) => (
+              <option key={method.value} value={method.value}>{method.label}</option>
+            ))}
+          </select>
+          <small>
+            {retainMissing
+              ? `${selected?.label ?? h.unlearningMethod} needs a retain set: go back to the data stage and add one.`
+              : "Method hyperparameters use the open-unlearning defaults."}
+          </small>
+        </label>
+
         <div className="field">
           <span>Training length</span>
           <div className="segmented compact" role="group" aria-label="Training length mode">

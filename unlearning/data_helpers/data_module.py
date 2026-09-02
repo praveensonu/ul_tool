@@ -1,9 +1,12 @@
-"""SimNPO data module."""
+"""Unlearning data module."""
 
+from pathlib import Path
 from torch.utils.data import Dataset
 import torch
 import pandas as pd
 import random
+
+IDK_PATH = Path(__file__).with_name("idk.jsonl")
 
 def convert_raw_data_to_model_qa(tokenizer, max_length,  question, answer):
     question = str(question)
@@ -110,4 +113,40 @@ class ForgetRetainDataset(Dataset):
         )
 
         return (forget_data, retain_data)
-    
+
+
+class IdkForgetRetainDataset(ForgetRetainDataset):
+    """Forget/retain pairs where each forget sample also carries a preferred answer.
+
+    The preferred ("alternate") answer comes from an `alternate` column when the forget
+    data has one, otherwise a random line of idk.jsonl is sampled per access.
+    """
+
+    def __init__(self, *args, idk_path=None, alternate_key="alternate", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.alternate_key = (
+            alternate_key if alternate_key in self.forget.columns else None
+        )
+        path = Path(idk_path) if idk_path else IDK_PATH
+        self.idk_responses = [
+            line.strip() for line in path.read_text().splitlines() if line.strip()
+        ]
+        if self.alternate_key is None and not self.idk_responses:
+            raise ValueError(f"No alternate answers available: {path} is empty.")
+
+    def _alternate_answer(self, idx):
+        if self.alternate_key is not None:
+            return self.forget.iloc[idx][self.alternate_key]
+        pos = torch.randint(0, len(self.idk_responses), (1,)).item()
+        return self.idk_responses[pos]
+
+    def __getitem__(self, idx):
+        forget_data, retain_data = super().__getitem__(idx)
+
+        alternate_data = convert_raw_data_to_model_qa(
+            self.tokenizer, self.max_length,
+            self.forget.iloc[idx][self.qk],
+            self._alternate_answer(idx),
+        )
+
+        return (forget_data, alternate_data, retain_data)

@@ -7,7 +7,8 @@ import type {
   EvaluationStartResponse,
   FinalTrainingConfigRequest,
   TrainRunResponse,
-  TrainStopResponse
+  TrainStopResponse,
+  UnlearningMethodInfo
 } from "./types";
 import { API_BASE_URL, apiUrl } from "./apiConfig";
 
@@ -99,4 +100,11 @@ export async function getLoraTargetModules(): Promise<string[]> {
   const values = targetSchema?.enum;
 
   return Array.isArray(values) ? values.filter((item): item is string => typeof item === "string") : [];
+}
+
+export async function getUnlearningMethods(): Promise<UnlearningMethodInfo[]> {
+  const response = await fetch(apiUrl("config/unlearning-methods"));
+  const payload = await readJson<{ methods?: UnlearningMethodInfo[] }>(response);
+
+  return Array.isArray(payload.methods) ? payload.methods : [];
 }

@@ -17,6 +17,7 @@ export function buildTrainingPayload(
       project.model.method === "adaptor" ? optionalText(project.model.adaptorPath) : null,
     hf_key: optionalText(project.model.hfKey),
     method: project.model.method,
+    unlearning_method: h.unlearningMethod,
     gpu_id: project.model.gpuId,
     forget_set_path: dataset.forget_set_path,
     retain_set_path: dataset.retain_set_path,

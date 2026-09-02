@@ -1,14 +1,13 @@
 import os
-import sys
-from types import SimpleNamespace
 import inspect
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-
-def dict_to_namespace(d: Dict[str, Any]):
-    if isinstance(d, dict):
-        return SimpleNamespace(**{k: dict_to_namespace(v) for k, v in d.items()})
-    return d
+from unlearning.methods import (  # noqa: F401
+    DEFAULT_UNLEARNING_METHOD,
+    FORGET_ONLY_METHODS,
+    RETAIN_REQUIRED_METHODS,
+    UNLEARNING_METHOD_ARGS,
+)
 
 
 def build_training_args(api_config: Dict[str, Any]):
@@ -50,7 +49,6 @@ def build_training_args(api_config: Dict[str, Any]):
 
 
 def build_trainer_kwargs(
-    trainer_cls,
     model,
     tokenizer,
     training_args,
@@ -65,7 +63,6 @@ def build_trainer_kwargs(
     }
 
     # transformers newer versions use processing_class instead of tokenizer
-    sig = inspect.signature(trainer_cls.__init__)
     trainer_sig = inspect.signature(__import__("transformers").Trainer.__init__)
 
     if "processing_class" in trainer_sig.parameters:
@@ -74,6 +71,78 @@ def build_trainer_kwargs(
         kwargs["tokenizer"] = tokenizer
 
     return kwargs
+
+
+def build_unlearning_run(method, forget_df, retain_df, tokenizer, context_length):
+    """Resolve a method name to its dataset, collator, trainer class and trainer args."""
+
+    from unlearning.data_helpers.collators import (
+        DpoRetainCollator,
+        ForgetCollator,
+        RetainCollator,
+    )
+    from unlearning.data_helpers.data_module import (
+        ForgetOnlyDataset,
+        ForgetRetainDataset,
+        IdkForgetRetainDataset,
+    )
+    from unlearning.dpo.trainer import DPOTrainer
+    from unlearning.ga.trainer import GradAscentTrainer
+    from unlearning.gd.trainer import GradDiffTrainer
+    from unlearning.npo.trainer import NPOTrainer
+    from unlearning.snpo.trainer import (
+        SimNPOForgetOnlyTrainer,
+        SimNPOForgetRetainTrainer,
+    )
+
+    if method not in UNLEARNING_METHOD_ARGS:
+        raise ValueError(
+            f"Unknown unlearning method '{method}'. "
+            f"Expected one of: {sorted(UNLEARNING_METHOD_ARGS)}."
+        )
+
+    if method in RETAIN_REQUIRED_METHODS and retain_df is None:
+        raise ValueError(f"Unlearning method '{method}' requires a retain set.")
+
+    trainer_args = dict(UNLEARNING_METHOD_ARGS[method])
+    dataset_kwargs = {
+        "tokenizer": tokenizer,
+        "max_length": context_length,
+        "question_key": "question",
+        "answer_key": "answer",
+    }
+
+    forget_only = method in FORGET_ONLY_METHODS or retain_df is None
+
+    if forget_only:
+        train_dataset = ForgetOnlyDataset(forget_data=forget_df, **dataset_kwargs)
+        data_collator = ForgetCollator
+        if method == "grad_ascent":
+            trainer_cls = GradAscentTrainer
+        else:
+            trainer_cls = SimNPOForgetOnlyTrainer
+            trainer_args.pop("alpha", None)
+            trainer_args.pop("retain_loss_type", None)
+    elif method == "dpo":
+        train_dataset = IdkForgetRetainDataset(
+            forget_data=forget_df, retain_data=retain_df, **dataset_kwargs
+        )
+        data_collator = DpoRetainCollator
+        trainer_cls = DPOTrainer
+    else:
+        train_dataset = ForgetRetainDataset(
+            forget_data=forget_df, retain_data=retain_df, **dataset_kwargs
+        )
+        data_collator = RetainCollator
+        trainer_cls = {
+            "grad_diff": GradDiffTrainer,
+            "npo": NPOTrainer,
+            "simnpo": SimNPOForgetRetainTrainer,
+        }[method]
+
+    run_type = f"{method}_{'forget_only' if forget_only else 'forget_retain'}"
+    return train_dataset, data_collator, trainer_cls, trainer_args, run_type
+
 
 def get_trainable_parameter_counts(model):
     trainable_params = 0
@@ -87,37 +156,24 @@ def get_trainable_parameter_counts(model):
 
     return trainable_params, total_params
 
+
 def run_orchestrator(api_config: Dict[str, Any]) -> Dict[str, Any]:
     gpu_id = api_config["gpu"]["gpu_id"]
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-
-    snpo_path = os.path.abspath("unlearning/snpo")
-    if snpo_path not in sys.path:
-        sys.path.insert(0, snpo_path)
 
     from accelerate import Accelerator
 
     from dataset.dataset_loader import read_file
     from model.model_loader import load_model_by_method
 
-    from unlearning.data_helpers.data_module import (
-        ForgetOnlyDataset,
-        ForgetRetainDataset,
-    )
-    from unlearning.data_helpers.collators import (
-        ForgetCollator,
-        RetainCollator,
-    )
-    from unlearning.snpo.trainer import (
-        SimNPOForgetOnlyTrainer,
-        SimNPOForgetRetainTrainer,
-    )
-
     accelerator = Accelerator()
 
     model_cfg = api_config["model"]
     data_cfg = api_config["dataset"]
     hp = api_config["hyperparams"]
+    method = api_config.get("unlearning", {}).get(
+        "method", DEFAULT_UNLEARNING_METHOD
+    )
 
     model, tokenizer, merged = load_model_by_method(
         method=model_cfg["method"],
@@ -148,58 +204,25 @@ def run_orchestrator(api_config: Dict[str, Any]) -> Dict[str, Any]:
 
     training_args = build_training_args(api_config)
 
-    if retain_df is None:
-        train_dataset = ForgetOnlyDataset(
-            forget_data=forget_df,
+    train_dataset, data_collator, trainer_cls, trainer_args, run_type = (
+        build_unlearning_run(
+            method=method,
+            forget_df=forget_df,
+            retain_df=retain_df,
             tokenizer=tokenizer,
-            max_length=context_length,
-            question_key="question",
-            answer_key="answer",
+            context_length=context_length,
         )
+    )
 
-        trainer_kwargs = build_trainer_kwargs(
-            trainer_cls=SimNPOForgetOnlyTrainer,
-            model=model,
-            tokenizer=tokenizer,
-            training_args=training_args,
-            train_dataset=train_dataset,
-            data_collator=ForgetCollator,
-        )
+    trainer_kwargs = build_trainer_kwargs(
+        model=model,
+        tokenizer=tokenizer,
+        training_args=training_args,
+        train_dataset=train_dataset,
+        data_collator=data_collator,
+    )
 
-        trainer = SimNPOForgetOnlyTrainer(
-            delta=0.0,
-            beta=3.5,
-            **trainer_kwargs,
-        )
-
-        run_type = "forget_only"
-
-    else:
-        train_dataset = ForgetRetainDataset(
-            forget_data=forget_df,
-            retain_data=retain_df,
-            tokenizer=tokenizer,
-            max_length=context_length,
-            question_key="question",
-            answer_key="answer",
-        )
-
-        trainer_kwargs = build_trainer_kwargs(
-            trainer_cls=SimNPOForgetRetainTrainer,
-            model=model,
-            tokenizer=tokenizer,
-            training_args=training_args,
-            train_dataset=train_dataset,
-            data_collator=RetainCollator,
-        )
-
-        trainer = SimNPOForgetRetainTrainer(
-            delta=0.0,
-            beta=3.5,
-            **trainer_kwargs,
-        )
-
-        run_type = "forget_retain"
+    trainer = trainer_cls(**trainer_args, **trainer_kwargs)
 
     result = trainer.train()
 
@@ -222,6 +245,7 @@ def run_orchestrator(api_config: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "status": "success",
+        "unlearning_method": method,
         "run_type": run_type,
         "merged_adapter": merged,
         "output_dir": output_dir,

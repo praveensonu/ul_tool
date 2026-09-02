@@ -1,4 +1,11 @@
 export type Method = "full" | "lora" | "adaptor";
+export type UnlearningMethod = "grad_ascent" | "grad_diff" | "npo" | "dpo" | "simnpo";
+
+export type UnlearningMethodInfo = {
+  value: UnlearningMethod;
+  label: string;
+  requires_retain: boolean;
+};
 export type StepMode = "max_steps" | "epochs";
 export type LoraTarget = string;
 export type ProjectStage = "data" | "model" | "hyperparameters" | "running" | "evaluation";
@@ -59,6 +66,7 @@ export type FinalTrainingConfigRequest = {
   adaptor_path: string | null;
   hf_key: string | null;
   method: Method;
+  unlearning_method: UnlearningMethod;
   gpu_id: number;
   forget_set_path: string;
   retain_set_path: string | null;
@@ -204,6 +212,7 @@ export type ProjectModelConfig = {
 };
 
 export type ProjectHyperparametersConfig = {
+  unlearningMethod: UnlearningMethod;
   stepMode: StepMode;
   maxSteps: number;
   epochs: number;

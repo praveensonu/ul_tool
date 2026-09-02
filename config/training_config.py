@@ -16,6 +16,9 @@ def build_orchestrator_config(request: FinalTrainingConfigRequest) -> dict:
         "gpu": {
             "gpu_id": request.gpu_id,
         },
+        "unlearning": {
+            "method": request.unlearning_method.value,
+        },
         "hyperparams": {
             "general": {
                 "max_steps": request.hyperparams.general.max_steps,
