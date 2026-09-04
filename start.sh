@@ -69,6 +69,12 @@ if docker container inspect "${FRONTEND_CONTAINER}" >/dev/null 2>&1; then
   exit 1
 fi
 
+if command -v ss >/dev/null 2>&1 && ss -ltn | grep -q ":${BACKEND_PORT} "; then
+  printf 'Backend port %s is already in use.\n' "${BACKEND_PORT}" >&2
+  printf 'Check it with: ss -ltnp | grep ":%s"\n' "${BACKEND_PORT}" >&2
+  exit 1
+fi
+
 printf 'Building frontend image %s...\n' "${FRONTEND_IMAGE}"
 docker build -t "${FRONTEND_IMAGE}" "${FRONTEND_DIR}"
 
@@ -90,7 +96,8 @@ printf 'Starting frontend on http://localhost:%s...\n' "${FRONTEND_PORT}"
 docker run --rm \
   --name "${FRONTEND_CONTAINER}" \
   --add-host=host.docker.internal:host-gateway \
-  -p "${FRONTEND_PORT}:5173" \
+  -p "${FRONTEND_PORT}:${FRONTEND_PORT}" \
+  -e "FRONTEND_PORT=${FRONTEND_PORT}" \
   -e "VITE_API_URL=${VITE_API_URL}" \
   -e "API_PROXY_TARGET=${API_PROXY_TARGET}" \
   "${FRONTEND_IMAGE}" &

@@ -28,6 +28,14 @@ def return_evaluation_result_with_progress(api_config, progress_callback=None):
     return {"received": api_config["value"]}
 
 
+def cancellable_evaluation_result(api_config, progress_callback=None):
+    for index in range(100):
+        if progress_callback:
+            progress_callback("calculating", f"Calculating batch {index}.")
+        time.sleep(0.02)
+    return {"received": api_config["value"]}
+
+
 class EvaluationSchemaTests(unittest.TestCase):
     def valid_payload(self):
         return {
@@ -146,6 +154,27 @@ class EvaluationProcessManagerTests(unittest.TestCase):
             any(event["stage"] == "calculating" for event in status["progress"])
         )
 
+    def test_cooperatively_cancels_a_background_evaluation(self):
+        manager = EvaluationProcessManager(runner=cancellable_evaluation_result)
+        started = manager.start({"value": 7})
+        deadline = time.monotonic() + 15
+
+        while time.monotonic() < deadline:
+            status = manager.get_status(started["job_id"])
+            if status["progress"]:
+                break
+            time.sleep(0.02)
+
+        self.assertTrue(manager.cancel(started["job_id"]))
+        while time.monotonic() < deadline:
+            status = manager.get_status(started["job_id"])
+            if status["status"] == "cancelled":
+                break
+            time.sleep(0.02)
+
+        self.assertEqual(status["status"], "cancelled")
+        self.assertFalse(manager.is_running)
+
 
 class EvaluationRouteTests(unittest.TestCase):
     def test_canonical_evaluation_route_is_registered(self):
@@ -155,6 +184,9 @@ class EvaluationRouteTests(unittest.TestCase):
         self.assertIn("/api/evaluation/start", app.openapi()["paths"])
         self.assertIn(
             "/api/evaluation/status/{job_id}", app.openapi()["paths"]
+        )
+        self.assertIn(
+            "/api/evaluation/cancel/{job_id}", app.openapi()["paths"]
         )
 
 

@@ -22,6 +22,19 @@ front end/
 │   ├── App.tsx
 │   ├── api.ts
 │   ├── apiConfig.ts
+│   ├── components
+│   │   └── stages
+│   │       ├── DataStage.tsx
+│   │       ├── ModelStage.tsx
+│   │       ├── HyperparametersStage.tsx
+│   │       ├── RunningStage.tsx
+│   │       └── EvaluationStage.tsx
+│   ├── state
+│   │   └── ProjectContext.tsx
+│   ├── utils
+│   │   ├── datasetFiles.ts
+│   │   ├── projectPayload.ts
+│   │   └── projectValidation.ts
 │   ├── main.tsx
 │   ├── styles.css
 │   ├── types.ts
@@ -79,14 +92,18 @@ The frontend uses these backend endpoints:
 ```text
 GET  /api/health
 POST /api/dataset/upload
+POST /api/dataset/extract/start
+GET  /api/dataset/extract/status/{job_id}
+POST /api/dataset/extract/cancel/{job_id}
 POST /api/config/build
 POST /api/train/run
 POST /api/train/stop
 POST /api/evaluation/start
 GET  /api/evaluation/status/{job_id}
+POST /api/evaluation/cancel/{job_id}
 ```
 
-### Dataset Upload
+### Dataset input
 
 `POST /api/dataset/upload` receives:
 
@@ -102,6 +119,52 @@ The frontend expects the response to include:
 - preview rows
 
 These processed parquet paths are then passed into `/api/config/build` and `/api/train/run`.
+
+Stage 1 has a segmented **Upload / Extract** source selector. When **Extract**
+is selected, the frontend uploads a full dataset and a poison set to
+`POST /api/dataset/extract/start`, together with:
+
+- Prompt/instruction text.
+- Model name or local path.
+- Maximum sequence length.
+- Optional adapter/LoRA path.
+- RASLIK or GRACE selection method.
+- Forget and retain sample counts.
+- GRACE top-n candidate pool and cluster count, when applicable.
+- Whether cached gradients should be kept after selection.
+
+The initial extraction values are RASLIK, 100 forget samples, 100 retain
+samples, maximum length 512, and model
+`meta-llama/Llama-3.2-1B-Instruct`. GRACE additionally defaults to a top-n
+pool of 400 and 10 retain clusters. The UI suggests top-n at roughly four
+times the forget count; these values remain user-editable.
+
+The backend adds the row question to the reconstructed prompt, converts both
+datasets to RASLIK JSONL with safe unique `id`, `prompt`, and `generation`
+columns, and runs gradient caching first for the full dataset and then for the
+poison set. RASLIK ranks average inner products; GRACE applies NNOMP for
+forget samples and balanced, cluster-local OMP for retain samples.
+
+Extraction runs as a background job. The frontend polls its status and renders
+the same progress timeline pattern used by evaluation. Stages cover dataset
+preparation, full-dataset gradient caching, poison-set gradient caching,
+selection, gradient cleanup/retention, and completion. While it is active,
+inputs are disabled and **Cancel extraction** replaces the submit button.
+
+The **Keep cached gradients** checkbox is off by default. When it remains off,
+the backend removes the training, poison, and average-poison gradient tensors
+as soon as selection succeeds. The selected parquet datasets, metadata,
+configs, and logs remain. On success, the frontend:
+
+- Stores the returned `forget_set_path` and `retain_set_path` as the project's
+  processed dataset paths.
+- Shows the extracted forget-set preview; server-produced previews are not
+  row-filterable.
+- Shows the selected method, row counts, and both output paths.
+- Prepopulates the model stage from the extraction model and adapter fields.
+  An adapter selects `adaptor`; no adapter selects `full`.
+- Unlocks the normal model, hyperparameter, unlearning, and evaluation flow
+  without requiring another upload.
 
 ### Config Build
 
@@ -122,6 +185,11 @@ unlearning. The user supplies a sentence-transformers repository name or local
 path. The page starts a background job and polls its status endpoint to show
 model loading, language-model scoring, model removal, cosine similarity,
 ROUGE-L, and final aggregation updates.
+
+While evaluation is active, **Cancel evaluation** replaces the start button.
+Cancellation is cooperative: the UI shows a `cancelling` state while the
+backend finishes the current operation and releases any loaded model before
+reporting `cancelled`.
 
 On completion, grouped comparison plots and a detailed table show pre- and
 post-unlearning forget quality, model utility, dataset perplexities,
@@ -145,7 +213,7 @@ The first screen is the actual training console, not a landing page.
 
 Primary areas:
 
-- Dataset upload and prompt template.
+- Dataset upload or RASLIK/GRACE extraction, plus prompt template.
 - Model settings.
 - Hyperparameters.
 - Dataset preview.
@@ -159,8 +227,14 @@ The frontend keeps a local request payload in React state after datasets are upl
 
 Important rules reflected in the UI:
 
-- Forget dataset is required.
-- Retain dataset is optional, except for the unlearning methods that need one.
+- Direct upload requires a forget dataset; its retain dataset is optional,
+  except for unlearning methods that need one.
+- Extraction requires a full dataset, poison set, non-empty prompt and model,
+  positive maximum length, and positive forget and retain sizes.
+- GRACE requires top-n to be at least the forget size and its cluster count to
+  be between 1 and the retain size. The backend performs the additional
+  checks that depend on the uploaded full-dataset row count.
+- Successful extraction always supplies both forget and retain datasets.
 - Model loading method can be `full`, `lora`, or `adaptor`.
 - LoRA target modules appear only when method is `lora`.
 - The unlearning method dropdown on the hyperparameters stage is populated from
@@ -188,9 +262,10 @@ The palette is intentionally restrained:
 
 There are no gradient backgrounds and no purple color theme.
 
-## Backend Adjustment
+## Dataset Response and State Handoff
 
-The frontend needs processed dataset paths from upload responses. To support that, the backend dataset upload response includes:
+Both data-source modes converge on the same project state. A direct upload
+response includes:
 
 ```python
 forget_set_path: str
@@ -198,6 +273,26 @@ retain_set_path: Optional[str]
 ```
 
 These fields are defined in `schemas.py` and returned from `routes/dataset_routes.py`.
+
+The extraction response extends that shape with:
+
+```text
+experiment_name
+selection_method
+training_grads_path
+poison_grads_path
+training_data_path
+poison_data_path
+training_config_path
+poison_config_path
+selection_metadata_path
+```
+
+It always returns non-null forget and retain parquet paths, row counts, and
+previews. `ProjectContext.setExtractionResult()` stores this object as both
+`extractionResponse` and `uploadResponse`; downstream payload construction can
+therefore use the same processed-path fields for direct uploads and extracted
+datasets.
 
 ## Build Verification
 
@@ -208,8 +303,9 @@ docker build -t ascent-unlearning-frontend-test "front end"
 docker run --rm ascent-unlearning-frontend-test npm run build
 ```
 
-The backend schema change has been checked with:
+The backend extraction and selection changes have been checked with the test
+suite:
 
 ```bash
-python -m py_compile schemas.py routes/dataset_routes.py
+pytest -q
 ```

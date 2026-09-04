@@ -2,14 +2,15 @@ services:
   frontend:
     build:
       context: .
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    command: sh -c "npm install && npm run dev"
     environment:
+      FRONTEND_PORT: ${FRONTEND_PORT:-5173}
       VITE_API_URL: http://localhost:8000
       API_PROXY_TARGET: http://host.docker.internal:8000
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "5173:5173"
+      - "${FRONTEND_PORT:-5173}:${FRONTEND_PORT:-5173}"
     volumes:
       - .:/app
       - node_modules:/app/node_modules

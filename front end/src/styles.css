@@ -151,6 +151,8 @@ pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; background: #12
 .button-link { text-decoration: none; }
 .post-run-actions { margin-top: 18px; }
 .data-preview-panel { margin-top: 26px; }
+.form-fieldset { display: contents; margin: 0; padding: 0; border: 0; min-width: 0; }
+.extraction-progress-card { margin-top: 22px; }
 
 .evaluation-stage { background: linear-gradient(180deg, #fff 0%, #fbfcfa 100%); }
 .evaluation-config-card, .evaluation-progress-card, .evaluation-chart-card, .metric-table-card {
@@ -168,8 +170,9 @@ pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; background: #12
 .progress-heading > span { border-radius: 999px; background: #eff3ef; padding: 5px 10px; color: #5d6961; text-transform: capitalize; font-size: .75rem; font-weight: 800; }
 .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #8a948d; box-shadow: 0 0 0 4px #edf0ed; }
 .status-dot.running, .status-dot.queued { background: #c78c2d; box-shadow: 0 0 0 4px #fff2d8; }
+.status-dot.cancelling { background: #c78c2d; box-shadow: 0 0 0 4px #fff2d8; }
 .status-dot.completed { background: #2f8a63; box-shadow: 0 0 0 4px #dff2e8; }
-.status-dot.failed { background: #a8423e; box-shadow: 0 0 0 4px #f9e3e1; }
+.status-dot.failed, .status-dot.cancelled { background: #a8423e; box-shadow: 0 0 0 4px #f9e3e1; }
 .progress-timeline { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 2px; max-height: 360px; overflow: auto; }
 .progress-timeline li { position: relative; display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; padding: 8px 0; color: #6e7972; }
 .progress-timeline li svg { margin-top: 2px; color: #79a08e; }

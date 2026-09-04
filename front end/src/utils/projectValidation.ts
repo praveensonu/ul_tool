@@ -4,10 +4,19 @@ import type { Project, ProjectStage } from "../types";
 const stageOrder: ProjectStage[] = ["data", "model", "hyperparameters", "running", "evaluation"];
 
 export function isDataValid(project: Project) {
+  if (project.data.sourceMode === "extract") {
+    return Boolean(
+      project.data.fullFile &&
+        project.data.poisonFile &&
+        project.data.promptTemplate.trim().length > 0 &&
+        project.data.extractionResponse &&
+        project.data.uploadResponse?.forget_set_path &&
+        project.data.uploadResponse?.retain_set_path
+    );
+  }
+
   const sourceOk =
-    project.data.sourceMode === "upload"
-      ? Boolean(project.data.forgetFile)
-      : Boolean(project.data.fullFile && project.data.poisonFile);
+    project.data.sourceMode === "upload" && Boolean(project.data.forgetFile);
 
   return Boolean(
     sourceOk &&
@@ -36,7 +45,11 @@ export function isHyperparametersValid(project: Project) {
   const contextOk = h.contextLength > 0 && (h.contextLength & (h.contextLength - 1)) === 0;
   const retainOk =
     !retainRequiredMethods.includes(h.unlearningMethod) ||
-    Boolean(project.data.preparedRetainFile ?? project.data.retainFile);
+    Boolean(
+      project.data.uploadResponse?.retain_set_path ??
+        project.data.preparedRetainFile ??
+        project.data.retainFile
+    );
 
   return (
     scheduleOk &&

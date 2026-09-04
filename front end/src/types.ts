@@ -10,6 +10,7 @@ export type StepMode = "max_steps" | "epochs";
 export type LoraTarget = string;
 export type ProjectStage = "data" | "model" | "hyperparameters" | "running" | "evaluation";
 export type DataSourceMode = "upload" | "extract";
+export type DataSelectionMethod = "raslik" | "grace";
 
 export type BackendPreviewRow = {
   question?: string;
@@ -35,6 +36,57 @@ export type DatasetUploadResponse = {
   prompt_template: string;
   forget_preview: BackendPreviewRow[];
   retain_preview: BackendPreviewRow[] | null;
+  message: string;
+};
+
+export type GradientCacheResponse = {
+  status: "success";
+  experiment_name: string;
+  training_grads_path: string;
+  poison_grads_path: string;
+  training_data_path: string;
+  poison_data_path: string;
+  training_config_path: string;
+  poison_config_path: string;
+  training_rows: number;
+  poison_rows: number;
+  message: string;
+};
+
+export type DatasetExtractionResponse = DatasetUploadResponse & GradientCacheResponse & {
+  selection_method: DataSelectionMethod;
+  selection_metadata_path: string;
+  retain_set_path: string;
+  retain_rows: number;
+  retain_preview: BackendPreviewRow[];
+  has_retain_set: true;
+  gradients_retained: boolean;
+};
+
+export type ProgressEvent = {
+  stage: string;
+  message: string;
+  timestamp: string;
+};
+
+export type ExtractionStartResponse = {
+  job_id: string;
+  status: "queued" | "running";
+  message: string;
+};
+
+export type ExtractionJobStatus = {
+  job_id: string;
+  status: "queued" | "running" | "cancelling" | "cancelled" | "completed" | "failed";
+  current_stage: string;
+  message: string;
+  progress: ProgressEvent[];
+  result: DatasetExtractionResponse | null;
+  error: string | null;
+};
+
+export type JobCancelResponse = {
+  status: "cancelling" | "cancelled" | "idle";
   message: string;
 };
 
@@ -167,7 +219,7 @@ export type EvaluationStartResponse = {
 
 export type EvaluationJobStatus = {
   job_id: string;
-  status: "queued" | "running" | "completed" | "failed";
+  status: "queued" | "running" | "cancelling" | "cancelled" | "completed" | "failed";
   current_stage: string;
   message: string;
   progress: EvaluationProgressEvent[];
@@ -182,15 +234,26 @@ export type ProjectDataConfig = {
   forgetFile: File | null;
   retainFile: File | null;
 
-  // Extract mode: derive forget/retain from full data + poison set.
+  // Extract mode: derive forget/retain from full data + poison gradients.
   fullFile: File | null;
   poisonFile: File | null;
+  extractionModelName: string;
+  extractionMaxLength: number;
+  extractionAdaptorPath: string;
+  selectionMethod: DataSelectionMethod;
+  forgetSize: number;
+  retainSize: number;
+  graceTopN: number;
+  graceNumClusters: number;
+  keepGradients: boolean;
+  extractionJob: ExtractionJobStatus | null;
+  extractionResponse: DatasetExtractionResponse | null;
 
   // Files actually sent to the backend after extraction / row filtering.
   preparedForgetFile: File | null;
   preparedRetainFile: File | null;
 
-  // The full backend prompt stays fixed. The UI only shows {question}.
+  // The UI collects an instruction; the dataset question is appended to it.
   promptTemplate: string;
 
   previewRows: ProjectPreviewRow[];

@@ -131,50 +131,9 @@ export async function parseDatasetFile(file: File): Promise<LocalRow[]> {
   return toPreviewRows(records);
 }
 
-function stableRecordKey(record: Record<string, unknown>) {
-  const sorted = Object.keys(record)
-    .sort()
-    .reduce<Record<string, unknown>>((result, key) => {
-      result[key] = record[key];
-      return result;
-    }, {});
-  return JSON.stringify(sorted);
-}
-
-function rowIdentityKeys(row: LocalRow) {
-  const keys: string[] = [];
-  const explicitId = stringValue(row.raw, ["id", "ID", "Id", "uid", "uuid"]);
-  if (explicitId) keys.push(`id:${explicitId}`);
-  if (row.question || row.answer) keys.push(`qa:${row.question}\u0000${row.answer}`);
-  keys.push(`raw:${stableRecordKey(row.raw)}`);
-  return keys;
-}
-
 export function rowsToJsonlFile(rows: LocalRow[], filename: string) {
   const content = rows.map((row) => JSON.stringify(row.raw)).join("\n") + "\n";
   return new File([content], filename, { type: "application/x-ndjson" });
-}
-
-export async function extractForgetAndRetain(fullFile: File, poisonFile: File) {
-  const fullRows = await parseDatasetFile(fullFile);
-  const poisonRows = await parseDatasetFile(poisonFile);
-  const poisonKeys = new Set(poisonRows.flatMap(rowIdentityKeys));
-
-  const forgetRows = fullRows.filter((row) => rowIdentityKeys(row).some((key) => poisonKeys.has(key)));
-  const retainRows = fullRows.filter((row) => !rowIdentityKeys(row).some((key) => poisonKeys.has(key)));
-
-  if (forgetRows.length === 0) {
-    throw new Error(
-      "No poison rows matched the full dataset. Matching uses id when available, otherwise question + answer."
-    );
-  }
-
-  return {
-    forgetRows,
-    retainRows,
-    forgetFile: rowsToJsonlFile(forgetRows, "forget_extracted.jsonl"),
-    retainFile: rowsToJsonlFile(retainRows, "retain_extracted.jsonl")
-  };
 }
 
 export function selectedRows(rows: LocalRow[], selectedKeys: string[]) {

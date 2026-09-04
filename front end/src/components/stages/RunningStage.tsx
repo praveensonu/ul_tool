@@ -4,7 +4,7 @@ import { runTraining, stopTraining, uploadDatasets } from "../../api";
 import { useProject } from "../../state/ProjectContext";
 import type { DatasetUploadResponse } from "../../types";
 import { buildTrainingPayload } from "../../utils/projectPayload";
-import { defaultTemplate, unlearningMethodLabels } from "../../defaults";
+import { buildPromptTemplate, unlearningMethodLabels } from "../../defaults";
 
 export default function RunningStage() {
   const { project, setDatasetUpload, updateRun, markStageCompleted } = useProject();
@@ -15,8 +15,16 @@ export default function RunningStage() {
 
   const summary = useMemo(
     () => ({
-      dataset: project.data.preparedForgetFile?.name ?? project.data.forgetFile?.name ?? "Not selected",
-      retain: project.data.preparedRetainFile?.name ?? project.data.retainFile?.name ?? "None",
+      dataset:
+        project.data.uploadResponse?.forget_set_path ??
+        project.data.preparedForgetFile?.name ??
+        project.data.forgetFile?.name ??
+        "Not selected",
+      retain:
+        project.data.uploadResponse?.retain_set_path ??
+        project.data.preparedRetainFile?.name ??
+        project.data.retainFile?.name ??
+        "None",
       model: project.model.modelName,
       method: project.model.method,
       unlearningMethod: unlearningMethodLabels[project.hyperparameters.unlearningMethod],
@@ -55,12 +63,10 @@ export default function RunningStage() {
     const formData = new FormData();
     formData.append("forget_set", forgetFile);
     if (retainFile) formData.append("retain_set", retainFile);
-    const fullPrompt = defaultTemplate.replace(
-      "{question}",
-      project.data.promptTemplate.trim()
+    formData.append(
+      "prompt_template",
+      buildPromptTemplate(project.data.promptTemplate)
     );
-
-    formData.append("prompt_template", fullPrompt);
     const response = await uploadDatasets(formData);
     setDatasetUpload(response, null);
     return response;

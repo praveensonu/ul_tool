@@ -1,5 +1,6 @@
 outputs/
 .venv/
+.python-version
 uploaded_datasets/
 __pycache__/
 *.py[cod]
@@ -8,3 +9,4 @@ __pycache__/
 
 front end/node_modules/
 front end/dist/
+ex_congifs/

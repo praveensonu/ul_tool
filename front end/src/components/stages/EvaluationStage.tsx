@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, CheckCircle2, Loader2, Play } from "lucide-react";
-import { getEvaluationStatus, startEvaluation } from "../../api";
+import { AlertCircle, CheckCircle2, Loader2, Play, Square } from "lucide-react";
+import { cancelEvaluation, getEvaluationStatus, startEvaluation } from "../../api";
 import type { EvaluationJobStatus, EvaluationRequest } from "../../types";
 import { useProject } from "../../state/ProjectContext";
 import EvaluationDashboard from "../evaluation/EvaluationDashboard";
@@ -8,9 +8,10 @@ import EvaluationDashboard from "../evaluation/EvaluationDashboard";
 export default function EvaluationStage() {
   const { project, updateRun, markStageCompleted } = useProject();
   const [error, setError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const training = project.run.training;
   const job = project.run.evaluationJob;
-  const isRunning = job?.status === "queued" || job?.status === "running";
+  const isRunning = job?.status === "queued" || job?.status === "running" || job?.status === "cancelling";
   const activeJobId = isRunning && job ? job.job_id : null;
 
   const hasRetainSet = useMemo(() => {
@@ -42,6 +43,7 @@ export default function EvaluationStage() {
           setError(status.error ?? status.message);
           return;
         }
+        if (status.status === "cancelled") return;
         timer = window.setTimeout(poll, 900);
       } catch (pollError) {
         if (cancelled) return;
@@ -102,6 +104,30 @@ export default function EvaluationStage() {
     }
   }
 
+  async function handleCancel() {
+    if (!activeJobId) return;
+    setCancelling(true);
+    setError(null);
+    try {
+      const response = await cancelEvaluation(activeJobId);
+      if (job && response.status === "cancelling") {
+        updateRun({
+          evaluationJob: {
+            ...job,
+            status: "cancelling",
+            current_stage: "cancelling",
+            message: response.message
+          },
+          evaluationMessage: response.message
+        });
+      }
+    } catch (cancelError) {
+      setError(cancelError instanceof Error ? cancelError.message : "Could not cancel evaluation.");
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   const result = project.run.evaluation;
 
   return (
@@ -144,10 +170,26 @@ export default function EvaluationStage() {
             <small>Caps generation when evaluating each answer.</small>
           </label>
         </div>
-        <button className="primary-button" type="button" onClick={handleStart} disabled={isRunning || !hasRetainSet}>
-          {isRunning ? <Loader2 className="spin" size={17} /> : <Play size={17} />}
-          {isRunning ? "Evaluation running" : result ? "Run evaluation again" : "Start evaluation"}
-        </button>
+        <div className="inline-actions">
+          {isRunning ? (
+            <button
+              className="danger-button"
+              type="button"
+              onClick={handleCancel}
+              disabled={cancelling || job?.status === "cancelling"}
+            >
+              {cancelling || job?.status === "cancelling"
+                ? <Loader2 className="spin" size={17} />
+                : <Square size={15} fill="currentColor" />}
+              {job?.status === "cancelling" ? "Cancelling" : "Cancel evaluation"}
+            </button>
+          ) : (
+            <button className="primary-button" type="button" onClick={handleStart} disabled={!hasRetainSet}>
+              <Play size={17} />
+              {result ? "Run evaluation again" : "Start evaluation"}
+            </button>
+          )}
+        </div>
       </section>
 
       {job && (

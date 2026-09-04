@@ -1,12 +1,20 @@
-import { FormEvent, useMemo, useState } from "react";
-import { AlertCircle, CheckCircle2, Loader2, Upload } from "lucide-react";
-import { uploadDatasets } from "../../api";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { AlertCircle, CheckCircle2, Loader2, Square, Upload } from "lucide-react";
+import {
+  cancelDatasetExtraction,
+  getDatasetExtractionStatus,
+  startDatasetExtraction,
+  uploadDatasets
+} from "../../api";
 import { useProject } from "../../state/ProjectContext";
-import { defaultTemplate } from "../../defaults";
-import type { DataSourceMode, ProjectPreviewRow } from "../../types";
+import { buildPromptTemplate } from "../../defaults";
+import type {
+  DataSelectionMethod,
+  DataSourceMode,
+  ProjectPreviewRow
+} from "../../types";
 import {
   backendPreviewToRows,
-  extractForgetAndRetain,
   parseDatasetFile,
   rowsToJsonlFile,
   selectedRows
@@ -103,11 +111,66 @@ export default function DataStage() {
     updateDataInput,
     setDataPrepared,
     setPreviewSelection,
-    setDatasetUpload
+    setDatasetUpload,
+    setExtractionResult,
+    setExtractionJob,
+    updateModel
   } = useProject();
   const [uploading, setUploading] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const data = project.data;
+  const extractionJob = data.extractionJob;
+  const isExtracting = extractionJob?.status === "queued" ||
+    extractionJob?.status === "running" || extractionJob?.status === "cancelling";
+  const activeExtractionJobId = isExtracting && extractionJob ? extractionJob.job_id : null;
+
+  useEffect(() => {
+    if (!activeExtractionJobId) return;
+    const jobId = activeExtractionJobId;
+    let stopped = false;
+    let timer: number | undefined;
+
+    async function poll() {
+      try {
+        const status = await getDatasetExtractionStatus(jobId);
+        if (stopped) return;
+        setExtractionJob(status);
+        if (status.status === "completed" && status.result) {
+          const response = status.result;
+          const previewRows = backendPreviewToRows(response.forget_preview);
+          setExtractionResult(response);
+          updateModel({
+            modelName: data.extractionModelName.trim(),
+            adaptorPath: data.extractionAdaptorPath.trim(),
+            method: data.extractionAdaptorPath.trim() ? "adaptor" : "full"
+          });
+          setDataPrepared({
+            previewRows,
+            selectedPreviewKeys: previewRows.map((row) => row.key),
+            previewReady: previewRows.length > 0,
+            previewFilterable: false
+          });
+          return;
+        }
+        if (status.status === "failed") {
+          setError(status.error ?? status.message);
+          return;
+        }
+        if (status.status === "cancelled") return;
+        timer = window.setTimeout(poll, 900);
+      } catch (pollError) {
+        if (stopped) return;
+        setError(pollError instanceof Error ? pollError.message : "Could not read extraction status.");
+      }
+    }
+
+    poll();
+    return () => {
+      stopped = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [activeExtractionJobId]);
 
   function changeMode(mode: DataSourceMode) {
     updateDataInput({
@@ -123,12 +186,7 @@ export default function DataStage() {
     const formData = new FormData();
     formData.append("forget_set", forgetFile);
     if (retainFile) formData.append("retain_set", retainFile);
-    const fullPrompt = defaultTemplate.replace(
-        "{question}",
-        data.promptTemplate.trim()
-      );
-
-    formData.append("prompt_template", fullPrompt);
+    formData.append("prompt_template", buildPromptTemplate(data.promptTemplate));
 
     try {
       const response = await uploadDatasets(formData);
@@ -142,29 +200,17 @@ export default function DataStage() {
   }
 
   async function prepareInitialData() {
-    let forgetFile: File;
-    let retainFile: File | null;
+    if (!data.forgetFile) throw new Error("Choose a forget dataset first.");
+
+    const forgetFile = data.forgetFile;
+    const retainFile = data.retainFile;
     let previewRows: ProjectPreviewRow[] = [];
     let previewFilterable = true;
 
-    if (data.sourceMode === "extract") {
-      if (!data.fullFile || !data.poisonFile) {
-        throw new Error("Choose both the full dataset and poison set first.");
-      }
-      const extracted = await extractForgetAndRetain(data.fullFile, data.poisonFile);
-      forgetFile = extracted.forgetFile;
-      retainFile = extracted.retainFile;
-      previewRows = extracted.forgetRows;
-      setDataPrepared({ forgetFile, retainFile });
-    } else {
-      if (!data.forgetFile) throw new Error("Choose a forget dataset first.");
-      forgetFile = data.forgetFile;
-      retainFile = data.retainFile;
-      try {
-        previewRows = await parseDatasetFile(forgetFile);
-      } catch {
-        previewFilterable = false;
-      }
+    try {
+      previewRows = await parseDatasetFile(forgetFile);
+    } catch {
+      previewFilterable = false;
     }
 
     let preparedForgetFile = forgetFile;
@@ -219,7 +265,68 @@ export default function DataStage() {
     setUploading(true);
 
     try {
-      if (data.previewReady && data.previewFilterable && !data.preparedForgetFile) {
+      if (data.sourceMode === "extract") {
+        if (!data.fullFile || !data.poisonFile) {
+          throw new Error("Choose both the full dataset and poison set first.");
+        }
+        if (!data.promptTemplate.trim()) {
+          throw new Error("Enter the prompt that should precede each dataset question.");
+        }
+        if (!data.extractionModelName.trim()) {
+          throw new Error("Enter a model name or local path.");
+        }
+        if (data.extractionMaxLength < 1) {
+          throw new Error("Max length must be at least 1.");
+        }
+        if (data.forgetSize < 1 || data.retainSize < 1) {
+          throw new Error("Forget and retain sample counts must both be at least 1.");
+        }
+        if (
+          data.selectionMethod === "grace" &&
+          data.graceTopN < data.forgetSize
+        ) {
+          throw new Error("GRACE top-n must be at least the forget sample count.");
+        }
+        if (
+          data.selectionMethod === "grace" &&
+          (data.graceNumClusters < 1 || data.graceNumClusters > data.retainSize)
+        ) {
+          throw new Error(
+            "GRACE retain clusters must be between 1 and the retain sample count."
+          );
+        }
+
+        setExtractionResult(null);
+        const formData = new FormData();
+        formData.append("full_dataset", data.fullFile);
+        formData.append("poison_set", data.poisonFile);
+        formData.append("prompt_template", buildPromptTemplate(data.promptTemplate));
+        formData.append("experiment_name", project.name);
+        formData.append("model_name", data.extractionModelName.trim());
+        formData.append("max_length", String(data.extractionMaxLength));
+        formData.append("selection_method", data.selectionMethod);
+        formData.append("forget_size", String(data.forgetSize));
+        formData.append("retain_size", String(data.retainSize));
+        if (data.selectionMethod === "grace") {
+          formData.append("grace_top_n", String(data.graceTopN));
+          formData.append("grace_num_clusters", String(data.graceNumClusters));
+        }
+        if (data.extractionAdaptorPath.trim()) {
+          formData.append("adaptor_path", data.extractionAdaptorPath.trim());
+        }
+        formData.append("keep_gradients", String(data.keepGradients));
+
+        const started = await startDatasetExtraction(formData);
+        setExtractionJob({
+          job_id: started.job_id,
+          status: started.status,
+          current_stage: "starting",
+          message: started.message,
+          progress: [],
+          result: null,
+          error: null
+        });
+      } else if (data.previewReady && data.previewFilterable && !data.preparedForgetFile) {
         await applyCurrentSelection();
       } else {
         await prepareInitialData();
@@ -231,18 +338,43 @@ export default function DataStage() {
     }
   }
 
-  const uploadButtonLabel = data.previewReady && !data.preparedForgetFile
-    ? "Apply selection"
-    : data.previewReady
-      ? "Upload again"
-      : "Upload dataset";
+  async function handleCancelExtraction() {
+    if (!activeExtractionJobId) return;
+    setCancelling(true);
+    setError(null);
+    try {
+      const response = await cancelDatasetExtraction(activeExtractionJobId);
+      if (extractionJob && response.status === "cancelling") {
+        setExtractionJob({
+          ...extractionJob,
+          status: "cancelling",
+          current_stage: "cancelling",
+          message: response.message
+        });
+      }
+    } catch (cancelError) {
+      setError(cancelError instanceof Error ? cancelError.message : "Could not cancel extraction.");
+    } finally {
+      setCancelling(false);
+    }
+  }
+
+  const uploadButtonLabel = data.sourceMode === "extract"
+    ? data.extractionResponse
+      ? "Extract again"
+      : "Extract datasets"
+    : data.previewReady && !data.preparedForgetFile
+      ? "Apply selection"
+      : data.previewReady
+        ? "Upload again"
+        : "Upload dataset";
 
   return (
     <section className="stage-panel">
       <div className="stage-heading">
         <span className="stage-kicker">Stage 1</span>
         <h1>Data</h1>
-        <p>Upload forget/retain data directly, or extract them from a full dataset and poison set.</p>
+        <p>Upload forget/retain data directly, or extract them with RASLIK or GRACE.</p>
       </div>
 
       {error && (
@@ -253,6 +385,7 @@ export default function DataStage() {
       )}
 
       <form className="stage-form" onSubmit={handleUpload}>
+        <fieldset className="form-fieldset" disabled={Boolean(isExtracting) || uploading}>
         <div className="field">
           <span>Data source</span>
           <div className="segmented" role="group" aria-label="Data source mode">
@@ -297,7 +430,7 @@ export default function DataStage() {
               <span>Full dataset</span>
               <input
                 type="file"
-                accept=".csv,.json,.jsonl"
+                accept=".csv,.json,.jsonl,.parquet"
                 onChange={(event) => updateDataInput({ fullFile: event.target.files?.[0] ?? null })}
               />
               {data.fullFile && <small>Saved: {data.fullFile.name}</small>}
@@ -307,7 +440,7 @@ export default function DataStage() {
               <span>Poison set</span>
               <input
                 type="file"
-                accept=".csv,.json,.jsonl"
+                accept=".csv,.json,.jsonl,.parquet"
                 onChange={(event) => updateDataInput({ poisonFile: event.target.files?.[0] ?? null })}
               />
               {data.poisonFile && <small>Saved: {data.poisonFile.name}</small>}
@@ -315,13 +448,132 @@ export default function DataStage() {
           </div>
         )}
 
+        {data.sourceMode === "extract" && (
+          <>
+            <div className="field">
+              <span>Extraction method</span>
+              <div className="segmented" role="group" aria-label="Extraction method">
+                {(["raslik", "grace"] as DataSelectionMethod[]).map((method) => (
+                  <button
+                    key={method}
+                    type="button"
+                    className={data.selectionMethod === method ? "active" : ""}
+                    onClick={() => updateDataInput({ selectionMethod: method })}
+                  >
+                    {method.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="field-grid two">
+              <label className="field">
+                <span>Forget samples</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={data.forgetSize}
+                  onChange={(event) => updateDataInput({ forgetSize: Number(event.target.value) })}
+                />
+              </label>
+
+              <label className="field">
+                <span>Retain samples</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={data.retainSize}
+                  onChange={(event) => updateDataInput({ retainSize: Number(event.target.value) })}
+                />
+              </label>
+            </div>
+
+            {data.selectionMethod === "grace" && (
+              <div className="field-grid two">
+                <label className="field">
+                  <span>Top-n candidate pool</span>
+                  <input
+                    type="number"
+                    min={data.forgetSize}
+                    value={data.graceTopN}
+                    onChange={(event) => updateDataInput({ graceTopN: Number(event.target.value) })}
+                  />
+                  <small>Usually around four times the forget sample count.</small>
+                </label>
+
+                <label className="field">
+                  <span>Retain clusters</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={data.retainSize}
+                    value={data.graceNumClusters}
+                    onChange={(event) =>
+                      updateDataInput({ graceNumClusters: Number(event.target.value) })
+                    }
+                  />
+                  <small>Samples are distributed as evenly as cluster sizes allow.</small>
+                </label>
+              </div>
+            )}
+
+            <div className="field-grid three">
+              <label className="field">
+                <span>Model name or local path</span>
+                <input
+                  value={data.extractionModelName}
+                  onChange={(event) =>
+                    updateDataInput({ extractionModelName: event.target.value })
+                  }
+                  placeholder="meta-llama/..."
+                />
+              </label>
+
+              <label className="field">
+                <span>Max length</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={data.extractionMaxLength}
+                  onChange={(event) =>
+                    updateDataInput({ extractionMaxLength: Number(event.target.value) })
+                  }
+                />
+              </label>
+
+              <label className="field">
+                <span>Adapter / LoRA path <em>optional</em></span>
+                <input
+                  value={data.extractionAdaptorPath}
+                  onChange={(event) =>
+                    updateDataInput({ extractionAdaptorPath: event.target.value })
+                  }
+                  placeholder="/path/to/adapter"
+                />
+              </label>
+            </div>
+
+            <label className="run-option">
+              <input
+                type="checkbox"
+                checked={data.keepGradients}
+                onChange={(event) => updateDataInput({ keepGradients: event.target.checked })}
+              />
+              <span>
+                Keep cached gradients
+                <small>When unchecked, training and poison gradients are removed after selection.</small>
+              </span>
+            </label>
+          </>
+        )}
+
         <label className="field prompt-field">
-          <span>Question</span>
+          <span>Prompt</span>
 
           <textarea
             rows={3}
             value={data.promptTemplate}
-            placeholder="Type the question here..."
+            placeholder="Instruction to place before each dataset question..."
             onChange={(event) =>
               updateDataInput({
                 promptTemplate: event.target.value
@@ -330,17 +582,60 @@ export default function DataStage() {
           />
 
           <small>
-            Only enter the question. The complete prompt is reconstructed automatically.
+            The uploaded row's question is appended and the complete model prompt is reconstructed automatically.
           </small>
         </label>
+        </fieldset>
 
         <div className="inline-actions">
-          <button className="primary-button" type="submit" disabled={uploading}>
-            {uploading ? <Loader2 className="spin" size={17} /> : <Upload size={17} />}
-            {uploadButtonLabel}
-          </button>
+          {isExtracting ? (
+            <button
+              className="danger-button"
+              type="button"
+              onClick={handleCancelExtraction}
+              disabled={cancelling || extractionJob?.status === "cancelling"}
+            >
+              {cancelling || extractionJob?.status === "cancelling"
+                ? <Loader2 className="spin" size={17} />
+                : <Square size={15} fill="currentColor" />}
+              {extractionJob?.status === "cancelling" ? "Cancelling" : "Cancel extraction"}
+            </button>
+          ) : (
+            <button className="primary-button" type="submit" disabled={uploading}>
+              {uploading ? <Loader2 className="spin" size={17} /> : <Upload size={17} />}
+              {uploadButtonLabel}
+            </button>
+          )}
         </div>
       </form>
+
+      {extractionJob && (
+        <section className="evaluation-progress-card extraction-progress-card" aria-live="polite">
+          <div className="progress-heading">
+            <div>
+              <span className={`status-dot ${extractionJob.status}`} />
+              <strong>{extractionJob.message}</strong>
+            </div>
+            <span>{extractionJob.status}</span>
+          </div>
+          <ol className="progress-timeline">
+            {extractionJob.progress.map((event, index) => (
+              <li
+                key={`${event.timestamp}-${index}`}
+                className={index === extractionJob.progress.length - 1 ? "current" : "done"}
+              >
+                {index === extractionJob.progress.length - 1 && isExtracting
+                  ? <Loader2 className="spin" size={15} />
+                  : <CheckCircle2 size={15} />}
+                <div>
+                  <strong>{event.message}</strong>
+                  <small>{event.stage.split("_").join(" ")}</small>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       {data.backendUploadError && data.previewReady && (
         <div className="notice warning">
@@ -351,10 +646,24 @@ export default function DataStage() {
         </div>
       )}
 
-      {data.uploadResponse && (
+      {data.uploadResponse && !data.extractionResponse && (
         <div className="notice info">
           <CheckCircle2 size={18} />
           <span>Dataset uploaded and processed by the backend.</span>
+        </div>
+      )}
+
+      {data.extractionResponse && (
+        <div className="notice info">
+          <CheckCircle2 size={18} />
+          <span>
+            Extracted {data.extractionResponse.forget_rows} forget and{" "}
+            {data.extractionResponse.retain_rows} retain samples with{" "}
+            <strong>{data.extractionResponse.selection_method.toUpperCase()}</strong>.{" "}
+            Forget set: <code>{data.extractionResponse.forget_set_path}</code>.{" "}
+            Retain set: <code>{data.extractionResponse.retain_set_path}</code>.{" "}
+            Cached gradients were {data.extractionResponse.gradients_retained ? "kept" : "removed"}.
+          </span>
         </div>
       )}
 
@@ -364,7 +673,11 @@ export default function DataStage() {
             <CheckCircle2 size={18} />
             <div>
               <h2>Dataset preview</h2>
-              <p>Uncheck rows you want to ignore, then apply the selection before continuing.</p>
+              <p>
+                {data.sourceMode === "extract"
+                  ? "Preview of the extracted forget set."
+                  : "Uncheck rows you want to ignore, then apply the selection before continuing."}
+              </p>
             </div>
           </div>
 

@@ -10,14 +10,21 @@ from schemas import (
     EvaluationResponse,
     EvaluationStartResponse,
     EvaluationStatusResponse,
+    JobCancelResponse,
 )
 from training_process import training_process_manager
+from data_selection.caching import gradient_cache_manager
 
 
 router = APIRouter(prefix="/evaluation", tags=["Evaluation"])
 
 
-def _ensure_training_is_idle() -> None:
+def _ensure_gpu_workloads_are_idle() -> None:
+    if gradient_cache_manager.is_running:
+        raise HTTPException(
+            status_code=409,
+            detail="Evaluation cannot start while RASLIK gradient caching is active.",
+        )
     if training_process_manager.is_running:
         raise HTTPException(
             status_code=409,
@@ -27,7 +34,7 @@ def _ensure_training_is_idle() -> None:
 
 @router.post("/start", response_model=EvaluationStartResponse)
 def start_evaluation(request: EvaluationRequest):
-    _ensure_training_is_idle()
+    _ensure_gpu_workloads_are_idle()
     try:
         return evaluation_process_manager.start(request.model_dump())
     except EvaluationAlreadyRunningError as exc:
@@ -44,9 +51,32 @@ def evaluation_status(job_id: str):
         ) from exc
 
 
+@router.post("/cancel/{job_id}", response_model=JobCancelResponse)
+def cancel_evaluation(job_id: str):
+    try:
+        requested = evaluation_process_manager.cancel(job_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"Evaluation job not found: {job_id}"
+        ) from exc
+
+    if not requested:
+        return {
+            "status": "idle",
+            "message": "Evaluation is no longer running.",
+        }
+    return {
+        "status": "cancelling",
+        "message": (
+            "Evaluation cancellation requested. The current operation will "
+            "finish before loaded models are released."
+        ),
+    }
+
+
 @router.post("/run", response_model=EvaluationResponse)
 def run_evaluation(request: EvaluationRequest):
-    _ensure_training_is_idle()
+    _ensure_gpu_workloads_are_idle()
 
     try:
         return evaluation_process_manager.run(request.model_dump())

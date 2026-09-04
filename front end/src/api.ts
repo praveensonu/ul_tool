@@ -1,6 +1,9 @@
 import type {
   ConfigBuildResponse,
+  DatasetExtractionResponse,
   DatasetUploadResponse,
+  ExtractionJobStatus,
+  ExtractionStartResponse,
   EvaluationRequest,
   EvaluationJobStatus,
   EvaluationResponse,
@@ -8,6 +11,7 @@ import type {
   FinalTrainingConfigRequest,
   TrainRunResponse,
   TrainStopResponse,
+  JobCancelResponse,
   UnlearningMethodInfo
 } from "./types";
 import { API_BASE_URL, apiUrl } from "./apiConfig";
@@ -40,6 +44,35 @@ export async function uploadDatasets(formData: FormData) {
   });
 
   return readJson<DatasetUploadResponse>(response);
+}
+
+export async function extractDatasets(formData: FormData) {
+  const response = await fetch(apiUrl("dataset/extract"), {
+    method: "POST",
+    body: formData
+  });
+
+  return readJson<DatasetExtractionResponse>(response);
+}
+
+export async function startDatasetExtraction(formData: FormData) {
+  const response = await fetch(apiUrl("dataset/extract/start"), {
+    method: "POST",
+    body: formData
+  });
+  return readJson<ExtractionStartResponse>(response);
+}
+
+export async function getDatasetExtractionStatus(jobId: string) {
+  const response = await fetch(apiUrl(`dataset/extract/status/${jobId}`));
+  return readJson<ExtractionJobStatus>(response);
+}
+
+export async function cancelDatasetExtraction(jobId: string) {
+  const response = await fetch(apiUrl(`dataset/extract/cancel/${jobId}`), {
+    method: "POST"
+  });
+  return readJson<JobCancelResponse>(response);
 }
 
 export async function buildConfig(payload: FinalTrainingConfigRequest) {
@@ -80,6 +113,13 @@ export async function startEvaluation(payload: EvaluationRequest) {
 export async function getEvaluationStatus(jobId: string) {
   const response = await fetch(apiUrl(`evaluation/status/${jobId}`));
   return readJson<EvaluationJobStatus>(response);
+}
+
+export async function cancelEvaluation(jobId: string) {
+  const response = await fetch(apiUrl(`evaluation/cancel/${jobId}`), {
+    method: "POST"
+  });
+  return readJson<JobCancelResponse>(response);
 }
 
 export async function runEvaluation(payload: EvaluationRequest) {

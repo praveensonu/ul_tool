@@ -21,8 +21,13 @@ The browser calls `http://localhost:8000/api` directly, and FastAPI allows the d
 Ports and environment settings can be overridden if necessary:
 
 ```bash
-BACKEND_PORT=8080 FRONTEND_PORT=5174 ./start.sh
+BACKEND_PORT=8081 FRONTEND_PORT=5174 ./start.sh
 ```
+
+`FRONTEND_PORT` is passed to Vite and used for both sides of the Docker port
+mapping. In this example, Vite listens on port `5174` inside the container and
+Docker publishes `5174:5174` on the host. The frontend API URL and backend CORS
+origins also follow the overridden ports unless explicitly configured.
 
 See the root `README.md` for all supported overrides.
 
@@ -100,6 +105,7 @@ From the repository root:
 docker run -d \
   --name ascent-unlearning-frontend-dev \
   -p 5173:5173 \
+  -e FRONTEND_PORT=5173 \
   -e VITE_API_URL=http://localhost:8000 \
   ascent-unlearning-frontend
 ```
@@ -111,6 +117,18 @@ http://localhost:5173
 ```
 
 The frontend expects the backend to be running on port `8000`. `localhost` is correct here because `VITE_API_URL` is used by the browser, not by the frontend container.
+
+To run the frontend on another port, use the same value for the host mapping,
+container mapping, and `FRONTEND_PORT`:
+
+```bash
+docker run -d \
+  --name ascent-unlearning-frontend-dev \
+  -p 5174:5174 \
+  -e FRONTEND_PORT=5174 \
+  -e VITE_API_URL=http://localhost:8081 \
+  ascent-unlearning-frontend
+```
 
 ### Stop Frontend Container
 
@@ -125,6 +143,7 @@ docker rm -f ascent-unlearning-frontend-dev
 docker run -d \
   --name ascent-unlearning-frontend-dev \
   -p 5173:5173 \
+  -e FRONTEND_PORT=5173 \
   -e VITE_API_URL=http://localhost:8000 \
   ascent-unlearning-frontend
 ```
@@ -162,6 +181,7 @@ Change `VITE_API_URL` when starting the container. This value must be a URL the 
 docker run -d \
   --name ascent-unlearning-frontend-dev \
   -p 5173:5173 \
+  -e FRONTEND_PORT=5173 \
   -e VITE_API_URL=http://192.168.1.20:8000 \
   ascent-unlearning-frontend
 ```
@@ -173,6 +193,7 @@ Also include `http://localhost:5173` (or the actual frontend origin) in the back
 The checked-in examples are `.env.example` for FastAPI and `front end/.env.example` for Vite.
 
 - `CORS_ALLOWED_ORIGINS`: comma-separated exact browser origins allowed by FastAPI. It defaults to `http://localhost:5173,http://127.0.0.1:5173`. Set it in the backend process environment; Uvicorn does not read the example file automatically.
+- `FRONTEND_PORT`: Vite's listening port and both sides of the Docker port mapping when using `start.sh` or Docker Compose. It defaults to `5173`.
 - `VITE_API_URL`: backend origin visible to the browser, without `/api`. It defaults to `http://localhost:8000` in the frontend client.
 - `API_PROXY_TARGET`: optional Vite proxy target. It is only needed when `VITE_API_URL` is empty and the browser uses same-origin `/api` URLs.
 
@@ -185,6 +206,13 @@ If Docker Compose is available:
 ```bash
 cd "front end"
 docker compose up --build
+```
+
+To use another frontend port with Compose, pass `FRONTEND_PORT` to the command:
+
+```bash
+cd "front end"
+FRONTEND_PORT=5174 docker compose up --build
 ```
 
 Stop it with:

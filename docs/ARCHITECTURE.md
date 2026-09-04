@@ -11,6 +11,7 @@ The backend currently supports:
 - Optional PEFT/LoRA adapter loading.
 - Dataset upload for forget and optional retain sets.
 - Prompt-template formatting for question/answer datasets.
+- RASLIK and GRACE forget/retain extraction from cached gradients.
 - Hyperparameter validation.
 - Construction of a single orchestrator JSON.
 - Running the orchestrator from a FastAPI endpoint.
@@ -32,6 +33,17 @@ The next planned modules are:
 ├── dataset
 │   ├── __init__.py
 │   └── dataset_loader.py
+├── data_selection
+│   ├── __init__.py
+│   ├── caching.py
+│   ├── selection.py
+│   ├── MP_main.py
+│   └── RASLIK
+│       ├── data_loader.py
+│       ├── engine.py
+│       └── ...
+├── ex_configs
+│   └── caching.json
 ├── eval
 │   ├── __init__.py
 │   └── eval_utils.py
@@ -310,6 +322,120 @@ Dataset output:
 - Processed/template-applied parquet is saved.
 - Processed parquet path should be used in training config.
 
+The extraction workflow uses the same reader but calls
+`prepare_raslik_dataframe()` instead. This accepts either `question`/`answer`
+or already-normalized `prompt`/`generation` data. It creates an `id` column
+when absent, rejects empty, duplicate, or path-unsafe ids, and writes
+normalized JSONL containing `id`, `prompt`, and `generation`. For ordinary
+question/answer input, `prompt` is the template-applied question and
+`generation` is the answer. The original `question` and `answer` columns are
+retained so selected rows can be consumed directly by the unlearning code.
+
+---
+
+### 3.5.1 RASLIK and GRACE dataset selection
+
+Selecting **Extract** in the frontend starts a background job with:
+
+```text
+POST /api/dataset/extract/start
+GET  /api/dataset/extract/status/{job_id}
+POST /api/dataset/extract/cancel/{job_id}
+```
+
+The older blocking `POST /api/dataset/extract` endpoint remains available for
+compatibility.
+
+The multipart form contract is:
+
+| Field | Required | Meaning |
+|---|---:|---|
+| `full_dataset` | yes | Full training pool (`csv`, `json`, `jsonl`, or `parquet`) |
+| `poison_set` | yes | Small poison dataset in a supported format |
+| `prompt_template` | yes | Template containing `{question}` |
+| `experiment_name` | no | Human-readable prefix; defaults to `selection` |
+| `model_name` | yes | Hugging Face model name or local path |
+| `max_length` | yes | Positive sequence length used while caching |
+| `adaptor_path` | no | PEFT/LoRA adapter path |
+| `selection_method` | yes | `raslik` or `grace` |
+| `forget_size` | yes | Positive forget-set size |
+| `retain_size` | yes | Positive retain-set size |
+| `grace_top_n` | GRACE | Size of the forget candidate pool |
+| `grace_num_clusters` | GRACE | Number of retain-pool clusters |
+| `keep_gradients` | no | Keep cached tensors after selection; defaults to `false` |
+
+Both uploads are normalized to JSONL as described above before any GPU work
+begins. A sanitized experiment prefix plus a random suffix isolates each run.
+
+`data_selection/caching.py` generates one caching config for each normalized
+dataset and runs `data_selection/MP_main.py --config_path ...` sequentially.
+The generated configs preserve the checked-in `ex_configs/caching.json`
+defaults while overriding the normalized data path, gradient path, model,
+optional LoRA path, and maximum length. Compressed gradients are stored at:
+
+```text
+outputs/gradients/<experiment_name>/training
+outputs/gradients/<experiment_name>/poison
+```
+
+After caching, `data_selection/selection.py` applies one of two selectors:
+
+- **RASLIK** computes each training sample's inner product with the average
+  poison gradient. This is equivalent to averaging that sample's inner
+  products with every poison gradient. The highest-scoring ids form the
+  forget set and the lowest-scoring non-forget ids form the retain set.
+- **GRACE** ranks a configurable top-n candidate pool, applies non-negative
+  OMP (NNOMP) against the average poison gradient for forget selection, and
+  excludes the entire top-n pool from retain selection. It projects the
+  remaining gradients away from the average poison direction, clusters the
+  projected gradients with K-means, and applies OMP between each cluster
+  centroid and its samples. Retain quotas are distributed as evenly as
+  cluster capacity allows, with deterministic fallback filling if OMP stops
+  before the requested count.
+
+Parameter validation runs before gradient caching. RASLIK requires
+`forget_size + retain_size <= full dataset size`. GRACE requires
+`grace_top_n >= forget_size`, `grace_top_n + retain_size <= full dataset
+size`, and a cluster count no greater than either `retain_size` or the pool
+remaining after top-n exclusion. Training-gradient filenames must also match
+the normalized full-dataset ids exactly.
+
+The selected rows are read from the normalized full dataset by `id` and
+written directly as:
+
+```text
+outputs/gradients/<experiment_name>/selected/<method>/forget.parquet
+outputs/gradients/<experiment_name>/selected/<method>/retain.parquet
+outputs/gradients/<experiment_name>/selected/<method>/selection.json
+outputs/gradients/<experiment_name>/selected/<method>/average_poison_gradient.pt
+```
+
+The API returns these paths in the same fields used by direct dataset upload,
+along with previews, row counts, cache paths, config paths, and the resolved
+experiment name. The frontend stores the extraction response as its dataset
+response, so no second upload is required before unlearning.
+
+By default, the training and poison gradient directories and the saved average
+poison gradient are removed immediately after successful selection. The
+selected parquet files, selection metadata, configs, and logs remain. When
+`keep_gradients=true`, all gradient tensors remain and the result reports
+`gradients_retained=true`.
+
+`POST /api/dataset/cache-gradients` remains available for cache-only use. It
+accepts the common dataset/model fields but does not run selection.
+
+Gradient caching and selection are GPU-intensive. The background job records
+progress for dataset preparation, full-dataset caching, poison-set caching,
+selection, gradient retention/removal, and completion. A process lock permits
+only one cache/selection request at a time, and training and evaluation reject
+startup while it is active. Conversely, cache/selection requests are rejected
+while training or evaluation is active.
+
+Cancellation sets a cooperative cancellation flag. The active `MP_main.py`
+process group receives `SIGTERM` and is given time to exit before a `SIGKILL`
+fallback. Partial cached gradients and partial selected outputs are removed,
+and the job finishes with `cancelled` rather than `failed`.
+
 ---
 
 ### 3.6 `config/training_config.py`
@@ -508,6 +634,9 @@ sentence-transformers repository name or local path. It returns a job id.
 `GET /api/evaluation/status/{job_id}` returns the current phase, the full
 progress history, and eventually the comparison result. The older blocking
 `POST /api/evaluation/run` remains available for compatibility.
+`POST /api/evaluation/cancel/{job_id}` requests cooperative cancellation. The
+evaluation stops at its next progress boundary, allowing active model-loading
+phases to run their `finally` cleanup and release GPU memory.
 
 `eval_orchestrator.py`:
 
@@ -525,8 +654,9 @@ progress history, and eventually the comparison result. The older blocking
 - Writes four row-level tables under `<model_output_dir>/evaluation/`.
 
 `evaluation_process.py` owns one background evaluation child process and stores
-timestamped progress events in memory for the status endpoint. Training and
-evaluation are mutually exclusive to prevent concurrent GPU workloads.
+timestamped progress events in memory for the status endpoint. Training,
+evaluation, and gradient caching/selection are mutually exclusive to prevent
+concurrent GPU workloads.
 
 A retain set is required because model utility cannot be computed without it.
 
@@ -542,7 +672,7 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 ---
 
-### Step 2: Upload dataset
+### Step 2: Prepare datasets
 
 Endpoint:
 
@@ -564,6 +694,23 @@ Output:
 - Row counts.
 
 The frontend should store the returned processed paths and use them in the training request.
+
+For the alternative **Extract** workflow, use:
+
+```text
+POST /api/dataset/extract/start
+GET  /api/dataset/extract/status/{job_id}
+POST /api/dataset/extract/cancel/{job_id}
+```
+
+Inputs are the full dataset, poison set, prompt template, model name/path,
+maximum length, optional adapter path, selection method, forget size, retain
+size, and the GRACE-only top-n and cluster fields. The request normalizes both
+uploads, caches gradients once for the full training data and once for the
+poison data, applies RASLIK or GRACE selection, and returns the generated
+forget/retain parquet paths in the same fields as direct upload. The optional
+`keep_gradients` form field controls whether intermediate gradient tensors are
+retained after a successful extraction.
 
 ---
 
@@ -659,6 +806,20 @@ FastAPI Routes
         |       |
         |       v
         |   processed parquet paths
+        |
+        |-- /api/dataset/extract/start + status + cancel
+        |       |
+        |       v
+        |   normalize full + poison data to JSONL
+        |       |
+        |       v
+        |   MP_main.py twice (training, poison)
+        |       |
+        |       v
+        |   RASLIK or GRACE selection
+        |       |
+        |       v
+        |   forget.parquet + retain.parquet
         |
         |-- /api/config/build
         |       |
@@ -792,8 +953,8 @@ Instead of blocking inside `/api/train/run`.
 
 ### Evaluation next step
 
-Move the synchronous evaluation call to the same future job/status API used by
-training and add an evaluation stop endpoint.
+Add finer-grained row-level progress and cooperative cancellation checks to
+long model-scoring batches.
 
 ---
 
@@ -806,12 +967,14 @@ When editing this project:
 3. Keep route handlers thin.
 4. Put business logic in modules:
    - `dataset/`
+   - `data_selection/`
    - `model/`
    - `config/`
    - `evaluation/`
    - `orchestrator.py`
 5. The final object passed to training should always be a single JSON-like dictionary.
-6. Processed dataset paths, not raw uploaded paths, should be used for training.
+6. Processed or extracted parquet paths, not raw uploaded paths, should be used for training.
 7. For training adapters, keep PEFT adapter attached and trainable.
 8. For selected GPU, set `CUDA_VISIBLE_DEVICES` before loading model.
 9. Frontend requests should go through `front end/src/api.ts` and `apiConfig.ts`; do not hardcode backend URLs in components.
+10. Keep RASLIK/GRACE orchestration in `data_selection/caching.py` and selection math in `data_selection/selection.py`.

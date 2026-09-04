@@ -16,6 +16,11 @@ Today Date: 26 July 2024
 {question}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 `;
 
+export function buildPromptTemplate(userPrompt: string) {
+  const promptWithDatasetQuestion = `${userPrompt.trim()}\n\n{question}`;
+  return defaultTemplate.replace("{question}", promptWithDatasetQuestion);
+}
+
 export const defaultLoraTargets = ["q_proj", "v_proj", "k_proj", "o_proj"];
 
 export const fallbackUnlearningMethods: UnlearningMethodInfo[] = [
@@ -60,6 +65,17 @@ export function createDefaultProject(name = "Untitled project"): Project {
       retainFile: null,
       fullFile: null,
       poisonFile: null,
+      extractionModelName: "meta-llama/Llama-3.2-1B-Instruct",
+      extractionMaxLength: 512,
+      extractionAdaptorPath: "",
+      selectionMethod: "raslik",
+      forgetSize: 100,
+      retainSize: 100,
+      graceTopN: 400,
+      graceNumClusters: 10,
+      keepGradients: false,
+      extractionJob: null,
+      extractionResponse: null,
       preparedForgetFile: null,
       preparedRetainFile: null,
       promptTemplate: "",

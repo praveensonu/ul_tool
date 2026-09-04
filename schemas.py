@@ -65,6 +65,68 @@ class DatasetUploadResponse(BaseModel):
     message: str
 
 
+class GradientCacheResponse(BaseModel):
+    status: Literal["success"]
+    experiment_name: str
+    training_grads_path: str
+    poison_grads_path: str
+    training_data_path: str
+    poison_data_path: str
+    training_config_path: str
+    poison_config_path: str
+    training_rows: int
+    poison_rows: int
+    message: str
+
+
+class DataSelectionMethod(str, Enum):
+    raslik = "raslik"
+    grace = "grace"
+
+
+class DatasetExtractionResponse(GradientCacheResponse):
+    selection_method: DataSelectionMethod
+    forget_set_path: str
+    retain_set_path: str
+    selection_metadata_path: str
+    forget_rows: int
+    retain_rows: int
+    has_retain_set: Literal[True]
+    prompt_template: str
+    forget_preview: List[Dict[str, Any]]
+    retain_preview: List[Dict[str, Any]]
+    gradients_retained: bool
+
+
+class ExtractionStartResponse(BaseModel):
+    job_id: str
+    status: Literal["queued", "running"]
+    message: str
+
+
+class ExtractionProgressEvent(BaseModel):
+    stage: str
+    message: str
+    timestamp: str
+
+
+class ExtractionStatusResponse(BaseModel):
+    job_id: str
+    status: Literal[
+        "queued", "running", "cancelling", "cancelled", "completed", "failed"
+    ]
+    current_stage: str
+    message: str
+    progress: List[ExtractionProgressEvent]
+    result: Optional[DatasetExtractionResponse] = None
+    error: Optional[str] = None
+
+
+class JobCancelResponse(BaseModel):
+    status: Literal["cancelling", "cancelled", "idle"]
+    message: str
+
+
 class LoraTargetModule(str, Enum):
     q_proj = "q_proj"
     v_proj = "v_proj"
@@ -303,7 +365,9 @@ class EvaluationProgressEvent(BaseModel):
 
 class EvaluationStatusResponse(BaseModel):
     job_id: str
-    status: Literal["queued", "running", "completed", "failed"]
+    status: Literal[
+        "queued", "running", "cancelling", "cancelled", "completed", "failed"
+    ]
     current_stage: str
     message: str
     progress: List[EvaluationProgressEvent]

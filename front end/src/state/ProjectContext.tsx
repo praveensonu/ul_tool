@@ -10,6 +10,8 @@ import {
 import { saveProject } from "../storage/projectStorage";
 import type {
   DatasetUploadResponse,
+  DatasetExtractionResponse,
+  ExtractionJobStatus,
   Project,
   ProjectDataConfig,
   ProjectHyperparametersConfig,
@@ -36,6 +38,8 @@ type ProjectContextValue = {
   setDataPrepared: (patch: Partial<ProjectDataConfig>) => void;
   setPreviewSelection: (keys: string[]) => void;
   setDatasetUpload: (response: DatasetUploadResponse | null, error?: string | null) => void;
+  setExtractionResult: (response: DatasetExtractionResponse | null) => void;
+  setExtractionJob: (job: ExtractionJobStatus | null) => void;
   updateModel: (patch: Partial<ProjectModelConfig>) => void;
   updateHyperparameters: (patch: Partial<ProjectHyperparametersConfig>) => void;
   updateRun: (patch: Partial<ProjectRunState>) => void;
@@ -89,6 +93,8 @@ export function ProjectProvider({
             previewReady: false,
             previewFilterable: true,
             uploadResponse: null,
+            extractionJob: null,
+            extractionResponse: null,
             backendUploadError: null
           },
           completedStages: {
@@ -134,6 +140,24 @@ export function ProjectProvider({
             ...current.data,
             uploadResponse: response,
             backendUploadError: error
+          }
+        })),
+      setExtractionResult: (response) =>
+        commit((current) => ({
+          ...current,
+          data: {
+            ...current.data,
+            extractionResponse: response,
+            uploadResponse: response,
+            backendUploadError: null
+          }
+        })),
+      setExtractionJob: (job) =>
+        commit((current) => ({
+          ...current,
+          data: {
+            ...current.data,
+            extractionJob: job
           }
         })),
       updateModel: (patch) =>
