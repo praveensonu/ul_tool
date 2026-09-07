@@ -14,7 +14,8 @@ def build_orchestrator_config(request: FinalTrainingConfigRequest) -> dict:
             "retain_set_path": request.retain_set_path,
         },
         "gpu": {
-            "gpu_id": request.gpu_id,
+            "gpu_id": request.gpu_ids[0],
+            "gpu_ids": request.gpu_ids,
         },
         "unlearning": {
             "method": request.unlearning_method.value,

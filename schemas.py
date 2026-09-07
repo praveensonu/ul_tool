@@ -203,7 +203,8 @@ class FinalTrainingConfigRequest(BaseModel):
     hf_key: Optional[str] = None
     method: LoadMethod
     unlearning_method: UnlearningMethod = UnlearningMethod.simnpo
-    gpu_id: int
+    gpu_id: Optional[int] = Field(None, ge=0)
+    gpu_ids: Optional[List[int]] = None
 
     forget_set_path: str
     retain_set_path: Optional[str] = None
@@ -212,6 +213,10 @@ class FinalTrainingConfigRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_method_specific_config(self):
+        from gpu.gpu_utils import selected_gpu_ids
+        self.gpu_ids = selected_gpu_ids(self.model_dump(exclude_none=True))
+        self.gpu_id = self.gpu_ids[0]
+
         if self.method == LoadMethod.lora:
             if self.hyperparams.lora_settings is None:
                 raise ValueError("lora_settings is required when method='lora'.")
@@ -276,6 +281,8 @@ class EvaluationRequest(BaseModel):
     training_result: EvaluationTrainingResult
     embedding_model_name: str = Field(..., min_length=1)
     embedding_batch_size: int = Field(default=32, ge=1)
+    batch_size: int = Field(default=4, ge=1)
+    experiment_name: Optional[str] = Field(default=None, min_length=1)
     max_new_tokens: int = Field(default=256, ge=1)
     evaluation_output_dir: Optional[str] = None
 
@@ -298,12 +305,11 @@ class EvaluationRequest(BaseModel):
                 "orchestrator_config.dataset.retain_set_path is required to "
                 "compute model utility."
             )
-        if not isinstance(gpu_config, dict) or not isinstance(
-            gpu_config.get("gpu_id"), int
-        ):
-            raise ValueError("orchestrator_config.gpu.gpu_id is required.")
-        if gpu_config["gpu_id"] < 0:
-            raise ValueError("orchestrator_config.gpu.gpu_id must be non-negative.")
+        from gpu.gpu_utils import selected_gpu_ids
+        if not isinstance(gpu_config, dict):
+            raise ValueError("orchestrator_config.gpu is required.")
+        ids = selected_gpu_ids(gpu_config)
+        gpu_config.update(gpu_ids=ids, gpu_id=ids[0])
 
         return self
 
@@ -333,6 +339,7 @@ class ModelEvaluationScores(BaseModel):
 
 
 class EvaluationOutputFiles(BaseModel):
+    results_jsonl_path: str
     pre_forget_scores_path: str
     pre_retain_scores_path: str
     post_forget_scores_path: str
@@ -340,6 +347,8 @@ class EvaluationOutputFiles(BaseModel):
 
 
 class EvaluationResponse(BaseModel):
+    completed_at: str
+    experiment_name: str
     status: Literal["success"]
     model_path: str
     embedding_model_name: str
@@ -373,3 +382,20 @@ class EvaluationStatusResponse(BaseModel):
     progress: List[EvaluationProgressEvent]
     result: Optional[EvaluationResponse] = None
     error: Optional[str] = None
+
+
+class GpuInfo(BaseModel):
+    id: int
+    uuid: str
+    name: str
+    memory_total_mb: int
+    memory_used_mb: int
+    memory_free_mb: int
+    utilization_percent: int
+    is_available: bool
+    status: Literal["available", "busy"]
+
+
+class GpuListResponse(BaseModel):
+    gpus: List[GpuInfo]
+    available_gpu_ids: List[int]

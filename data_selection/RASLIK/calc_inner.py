@@ -151,3 +151,36 @@ def hvp(y, w, v):
     return_grads = torch.cat([x.reshape(-1) for x in grad(elemwise_products, w)])
 
     return return_grads
+
+
+def grad_z_batch(samples, model, device, pad_token_id):
+    """Vectorized per-example gradients; never differentiate a batch-mean loss.
+
+    Preserve grad_z's existing token alignment and per-parameter normalization.
+    The leading gradient dimension identifies samples and is kept through RapidGrad.
+    """
+    from torch.nn.utils.rnn import pad_sequence
+
+    inputs = pad_sequence([sample[0].reshape(-1) for sample in samples], batch_first=True, padding_value=pad_token_id).to(device)
+    targets = pad_sequence([sample[1].reshape(-1) for sample in samples], batch_first=True, padding_value=IGNORE_INDEX).to(device)
+    lengths = torch.tensor([sample[0].numel() for sample in samples], device=device)
+    mask = torch.arange(inputs.shape[1], device=device)[None, :] < lengths[:, None]
+    logits = model(inputs, attention_mask=mask, use_cache=False).logits
+    counts = (targets != IGNORE_INDEX).sum(dim=1)
+    if (counts == 0).any():
+        raise ValueError("Gradient samples must contain at least one target token.")
+    losses = F.cross_entropy(logits.transpose(1, 2), targets, reduction="none", ignore_index=IGNORE_INDEX).sum(dim=1) / counts
+    cached_params = get_params(model, create_if_not_exist=False)
+    parameters = cached_params if cached_params is not None else [p for p in model.parameters() if p.requires_grad]
+    gradients = torch.autograd.grad(
+        losses, parameters, grad_outputs=torch.eye(len(samples), device=device, dtype=losses.dtype),
+        is_grads_batched=True, allow_unused=True,
+    )
+    flattened = [g.reshape(len(samples), -1) for g in gradients if g is not None]
+    if cached_params is None:
+        flattened = [F.normalize(g, p=2, dim=1) for g in flattened]
+    del gradients, logits, losses
+    vectors = torch.cat(flattened, dim=1)
+    del flattened
+    block = 2**24
+    return F.pad(vectors, (0, ((vectors.shape[1] - 1) // block + 1) * block - vectors.shape[1]))

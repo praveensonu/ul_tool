@@ -149,6 +149,7 @@ def get_default_config():
             "save_to_grads_path": False,
             "delete_model": False,
             "n_threads": 1,
+            "gradient_batch_size": 1,
             "RapidGrad": {
                 "enable": False,
                 "RapidGrad_M": 1,

@@ -74,6 +74,7 @@ def build_caching_config(
     model_path: str,
     lora_path: str | None,
     max_length: int,
+    gradient_batch_size: int = 2,
 ) -> dict:
     """Build the caching-only RASLIK config from the checked-in example."""
 
@@ -87,6 +88,7 @@ def build_caching_config(
             "cal_words_infl": False,
             "save_to_grads_path": True,
             "n_threads": 1,
+            "gradient_batch_size": gradient_batch_size,
             "RapidGrad": {
                 "enable": True,
                 "RapidGrad_K": 65536,
@@ -121,11 +123,18 @@ def run_mp_main(
     log_path: Path,
     cancel_event: threading.Event | None = None,
 ) -> None:
+    from gpu.gpu_utils import selected_gpu_ids
+    config = json.loads(config_path.read_text())
+    env = os.environ.copy()
+    env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+    if "gpu_ids" in config:
+        env["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, selected_gpu_ids(config)))
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("w", encoding="utf-8") as log_file:
         process = subprocess.Popen(
             [sys.executable, str(MP_MAIN_PATH), "--config_path", str(config_path)],
             cwd=PROJECT_ROOT,
+            env=env,
             stdout=log_file,
             stderr=subprocess.STDOUT,
             text=True,
@@ -186,9 +195,13 @@ def prepare_uploaded_datasets(
     adaptor_path: str | None,
     dataset_validator: DatasetValidator | None = None,
     progress_callback: ProgressCallback | None = None,
+    gpu_ids: list[int] | None = None,
+    gradient_batch_size: int = 2,
 ) -> dict[str, Any]:
     if not model_name.strip():
         raise ValueError("model_name must not be empty.")
+    if gradient_batch_size < 1:
+        raise ValueError("gradient_batch_size must be at least 1.")
     if max_length < 1:
         raise ValueError("max_length must be at least 1.")
 
@@ -237,7 +250,10 @@ def prepare_uploaded_datasets(
             model_path=model_name.strip(),
             lora_path=adaptor_path.strip() if adaptor_path and adaptor_path.strip() else None,
             max_length=max_length,
+            gradient_batch_size=gradient_batch_size,
         )
+        if gpu_ids is not None:
+            config["gpu_ids"] = gpu_ids
         config_path = config_root / f"{label}.json"
         log_path = config_root / f"{label}.log"
         _write_config(config, config_path)

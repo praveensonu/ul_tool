@@ -978,3 +978,27 @@ When editing this project:
 8. For selected GPU, set `CUDA_VISIBLE_DEVICES` before loading model.
 9. Frontend requests should go through `front end/src/api.ts` and `apiConfig.ts`; do not hardcode backend URLs in components.
 10. Keep RASLIK/GRACE orchestration in `data_selection/caching.py` and selection math in `data_selection/selection.py`.
+
+### GPU selection
+
+Projects start at the GPUs step, before Data. `/api/gpus` lists physical device IDs,
+free memory, utilization, and availability. Users select one or more free devices;
+the ordered `gpu_ids` list is saved with the project and sent as repeated multipart
+`gpu_ids` fields for extraction and as a JSON array for training. Job endpoints
+recheck availability when starting work. This is an availability check, not a
+reservation against other programs using the machine.
+
+Extraction subprocesses receive `CUDA_VISIBLE_DEVICES` in their launch environment.
+`MP_main.py` also reads `gpu_ids` from its config before importing torch for direct
+CLI runs. Training and evaluation configure visibility at worker entry, before
+CUDA imports. Device selection belongs to each worker, rather than rewriting
+Python source or mutating the API server's environment. For example, `[6, 2]`
+becomes `CUDA_VISIBLE_DEVICES=6,2`; those devices are logical `cuda:0` and `cuda:1`.
+Legacy training/evaluation configs containing only `gpu_id` remain supported.
+
+RASLIK uses all visible GPUs. Unlearning balances model layers across the selected
+GPUs within one process. Evaluation computes perplexity and conditional probability
+with the model on the first selected GPU, then reloads it across the selection for
+generation. With one selected GPU, these phases are combined to avoid reloading.
+Embedding similarity also runs on the first selected GPU; ROUGE and aggregation
+run on CPU. The scoring model must fit on that single GPU.

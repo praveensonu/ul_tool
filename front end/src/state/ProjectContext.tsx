@@ -26,6 +26,7 @@ const emptyRun: ProjectRunState = {
   message: null,
   embeddingModelName: "",
   evaluationMaxNewTokens: 256,
+  evaluationBatchSize: 4,
   evaluationJob: null,
   evaluation: null,
   evaluationMessage: null
@@ -98,6 +99,7 @@ export function ProjectProvider({
             backendUploadError: null
           },
           completedStages: {
+            gpu: current.completedStages.gpu,
             data: false,
             model: false,
             hyperparameters: false,
@@ -125,6 +127,7 @@ export function ProjectProvider({
             backendUploadError: null
           },
           completedStages: {
+            gpu: current.completedStages.gpu,
             data: false,
             model: false,
             hyperparameters: false,
@@ -164,8 +167,12 @@ export function ProjectProvider({
         commit((current) => ({
           ...current,
           model: { ...current.model, ...patch },
+          data: patch.gpuIds && current.data.sourceMode === "extract"
+            ? { ...current.data, extractionResponse: null, extractionJob: null, uploadResponse: null }
+            : current.data,
           completedStages: {
             ...current.completedStages,
+            ...(patch.gpuIds ? { gpu: false, data: false } : {}),
             model: false,
             hyperparameters: false,
             running: false,

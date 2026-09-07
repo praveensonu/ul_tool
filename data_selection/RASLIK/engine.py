@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from ctypes import c_bool, c_int
 import torch
-from .calc_inner import grad_z, calc_loss, get_params, normalize, pad, reshape
+from .calc_inner import grad_z_batch, grad_z, calc_loss, get_params, normalize, pad, reshape
 from .data_loader import get_model_tokenizer, TrainDataset, TestDataset, get_tokenizer, get_model
 from .data_loader import get_dataset_size, read_data
 from .influence_function import calc_s_test_single
@@ -27,6 +27,31 @@ from sys import getsizeof
 
 MAX_CAPACITY = 2048
 MAX_DATASET_SIZE = int(1e8)
+
+
+def cache_gradient_batches(rank, config, mp_engine, dataset, model, tokenizer, compressor):
+    batch_size = int(config.influence.gradient_batch_size)
+    while True:
+        # Claim disjoint batches across selected GPUs, including the final partial batch.
+        with mp_engine.train_idx.get_lock():
+            start = mp_engine.train_idx.value
+            mp_engine.train_idx.value += batch_size
+        if start >= len(dataset):
+            # The parent terminates workers after the result collector drains its queue.
+            while True:
+                time.sleep(1)
+        indices = list(range(start, min(start + batch_size, len(dataset))))
+        samples = [dataset[index] for index in indices]
+        vectors = grad_z_batch(samples, model, f"cuda:{rank}", tokenizer.pad_token_id)
+        if config.influence.RapidGrad.enable:
+            vectors = compressor(vectors, config.influence.RapidGrad.RapidGrad_K)
+        for index, sample, vector in zip(indices, samples, vectors):
+            real_id = sample[3]
+            torch.save(vector.detach().cpu().clone(), os.path.join(config.influence.grads_path, f"{real_id}.pt"))
+            with mp_engine.finished_idx.get_lock():
+                mp_engine.finished_idx[index] = True
+            mp_engine.result_q.put((0, index, real_id, 0))
+        del vectors
 
 
 def MP_run_calc_infulence_function(rank, world_size, process_id, config, mp_engine, restart = False):
@@ -120,6 +145,10 @@ def MP_run_calc_infulence_function(rank, world_size, process_id, config, mp_engi
 
     if restart == False:
         mp_engine.start_barrier.wait()
+
+    if int(getattr(config.influence, "gradient_batch_size", 1)) > 1:
+        cache_gradient_batches(rank, config, mp_engine, train_dataset, model, tokenizer, oporp_eng)
+        return
 
     idx = 0
     while True:
@@ -428,6 +457,16 @@ class MPEngine:
 
 
 def calc_infl_mp(config):
+    batch_size = int(getattr(config.influence, "gradient_batch_size", 1))
+    if batch_size < 1:
+        raise ValueError("gradient_batch_size must be at least 1.")
+    if batch_size > 1 and (
+        not config.influence.skip_test or not config.influence.skip_influence
+        or not config.influence.save_to_grads_path or config.influence.load_from_grads_path
+        or config.influence.deepspeed.enable or config.influence.delete_model
+        or isinstance(config.influence.RapidGrad.RapidGrad_K, list)
+    ):
+        raise ValueError("Batched gradients support caching-only runs with a single RapidGrad K, without DeepSpeed or preloaded gradients. Use gradient_batch_size=1 for other modes.")
     gpu_num = torch.cuda.device_count()
     print(f"{gpu_num} GPUs available!")
     if gpu_num < 1:
@@ -449,30 +488,29 @@ def calc_infl_mp(config):
     mp_engine = MPEngine(num_processing)
 
     mp_handler = []
-    mp_args = []
     print(f"GPU Num: {gpu_num}, Threads per GPU: {threads_per_gpu}")
     for i in range(gpu_num):
         for j in range(threads_per_gpu):
             mp_handler.append(mp.Process(target=MP_run_calc_infulence_function, args=(i, gpu_num, i*threads_per_gpu + j, config, mp_engine,)))
-            mp_args.append(mp_handler[-1]._args)
     mp_handler.append(mp.Process(target=MP_run_get_result, args=(config, mp_engine)))
 
     for x in mp_handler:
         x.start()
 
-    while mp_handler[-1].is_alive():
-        cur_processes_num = len([1 for x in mp_handler if x.is_alive()])
-        if cur_processes_num < num_processing + 1:
-            print(f"ready to restart processing, {cur_processes_num}/{num_processing}")
-            for i, x in enumerate(mp_handler):
-                if x.is_alive() != True:
-                    print(f"start {mp_args[i]}")
-                    mp_handler[i] = mp.Process(target=MP_run_calc_infulence_function, args=mp_args[i] + (True,))
-                    mp_handler[i].start()
-            continue
-        with mp_engine.cur_processes_num.get_lock():
-            mp_engine.cur_processes_num.value = cur_processes_num
-        time.sleep(1)
-
-    for x in mp_handler:
-        x.terminate()
+    try:
+        while mp_handler[-1].is_alive():
+            failed = [process for process in mp_handler[:-1] if process.exitcode is not None]
+            if failed:
+                raise RuntimeError(
+                    "RASLIK worker exited before caching completed. Check the worker error above; "
+                    "for out-of-memory or unsupported batched operations, use gradient_batch_size=1."
+                )
+            time.sleep(1)
+        mp_handler[-1].join()
+        if mp_handler[-1].exitcode != 0:
+            raise RuntimeError("RASLIK result collection failed.")
+    finally:
+        for process in mp_handler:
+            if process.is_alive():
+                process.terminate()
+            process.join()

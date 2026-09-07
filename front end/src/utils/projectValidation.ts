@@ -1,7 +1,7 @@
 import { retainRequiredMethods } from "../defaults";
 import type { Project, ProjectStage } from "../types";
 
-const stageOrder: ProjectStage[] = ["data", "model", "hyperparameters", "running", "evaluation"];
+const stageOrder: ProjectStage[] = ["gpu", "data", "model", "hyperparameters", "running", "evaluation"];
 
 export function isDataValid(project: Project) {
   if (project.data.sourceMode === "extract") {
@@ -64,6 +64,7 @@ export function isHyperparametersValid(project: Project) {
 }
 
 export function isStageValid(project: Project, stage: ProjectStage) {
+  if (stage === "gpu") return project.completedStages.gpu && project.model.gpuIds.length > 0;
   if (stage === "data") return isDataValid(project);
   if (stage === "model") return isModelValid(project);
   if (stage === "hyperparameters") return isHyperparametersValid(project);
@@ -76,6 +77,8 @@ export function isStageComplete(project: Project, stage: ProjectStage) {
 }
 
 export function canAccessStage(project: Project, stage: ProjectStage) {
+  if (stage === "gpu") return true;
+  if (!project.completedStages.gpu || !project.model.gpuIds.length) return false;
   if (stage === "data") return true;
   if (stage === "model") return project.completedStages.data;
   if (stage === "hyperparameters") {

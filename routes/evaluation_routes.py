@@ -19,6 +19,14 @@ from data_selection.caching import gradient_cache_manager
 router = APIRouter(prefix="/evaluation", tags=["Evaluation"])
 
 
+def _validate_gpus(request: EvaluationRequest) -> None:
+    from gpu.gpu_utils import validate_gpu_ids
+    try:
+        validate_gpu_ids(request.orchestrator_config["gpu"]["gpu_ids"], require_available=True)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def _ensure_gpu_workloads_are_idle() -> None:
     if gradient_cache_manager.is_running:
         raise HTTPException(
@@ -36,6 +44,7 @@ def _ensure_gpu_workloads_are_idle() -> None:
 def start_evaluation(request: EvaluationRequest):
     _ensure_gpu_workloads_are_idle()
     try:
+        _validate_gpus(request)
         return evaluation_process_manager.start(request.model_dump())
     except EvaluationAlreadyRunningError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -79,6 +88,7 @@ def run_evaluation(request: EvaluationRequest):
     _ensure_gpu_workloads_are_idle()
 
     try:
+        _validate_gpus(request)
         return evaluation_process_manager.run(request.model_dump())
     except EvaluationAlreadyRunningError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

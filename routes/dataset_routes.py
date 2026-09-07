@@ -86,6 +86,8 @@ def cache_gradients(
     model_name: str = Form(...),
     max_length: int = Form(..., ge=1),
     adaptor_path: Optional[str] = Form(None),
+    gpu_ids: list[int] = Form(...),
+    gradient_batch_size: int = Form(2, ge=1),
 ):
     if training_process_manager.is_running or evaluation_process_manager.is_running:
         raise HTTPException(
@@ -96,7 +98,11 @@ def cache_gradients(
         )
 
     try:
+        from gpu.gpu_utils import validate_gpu_ids
+        validate_gpu_ids(gpu_ids, require_available=True)
         return gradient_cache_manager.run(
+            gpu_ids=gpu_ids,
+            gradient_batch_size=gradient_batch_size,
             full_dataset=full_dataset,
             poison_set=poison_set,
             prompt_template=prompt_template,
@@ -107,7 +113,7 @@ def cache_gradients(
         )
     except GradientCacheAlreadyRunningError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except (GradientCacheError, ValueError) as exc:
+    except (GradientCacheError, ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(
@@ -125,6 +131,8 @@ def extract_forget_retain(
     model_name: str = Form(...),
     max_length: int = Form(..., ge=1),
     adaptor_path: Optional[str] = Form(None),
+    gpu_ids: list[int] = Form(...),
+    gradient_batch_size: int = Form(2, ge=1),
     selection_method: DataSelectionMethod = Form(...),
     forget_size: int = Form(..., ge=1),
     retain_size: int = Form(..., ge=1),
@@ -141,7 +149,11 @@ def extract_forget_retain(
         )
 
     try:
+        from gpu.gpu_utils import validate_gpu_ids
+        validate_gpu_ids(gpu_ids, require_available=True)
         return gradient_cache_manager.extract(
+            gpu_ids=gpu_ids,
+            gradient_batch_size=gradient_batch_size,
             full_dataset=full_dataset,
             poison_set=poison_set,
             prompt_template=prompt_template,
@@ -176,6 +188,8 @@ def start_forget_retain_extraction(
     model_name: str = Form(...),
     max_length: int = Form(..., ge=1),
     adaptor_path: Optional[str] = Form(None),
+    gpu_ids: list[int] = Form(...),
+    gradient_batch_size: int = Form(2, ge=1),
     selection_method: DataSelectionMethod = Form(...),
     forget_size: int = Form(..., ge=1),
     retain_size: int = Form(..., ge=1),
@@ -190,7 +204,11 @@ def start_forget_retain_extraction(
         )
 
     try:
+        from gpu.gpu_utils import validate_gpu_ids
+        validate_gpu_ids(gpu_ids, require_available=True)
         return gradient_cache_manager.start_extract(
+            gpu_ids=gpu_ids,
+            gradient_batch_size=gradient_batch_size,
             full_dataset=full_dataset,
             poison_set=poison_set,
             prompt_template=prompt_template,

@@ -130,7 +130,7 @@ export default function RunningStage() {
   return (
     <section className="stage-panel">
       <div className="stage-heading">
-        <span className="stage-kicker">Stage 4</span>
+        <span className="stage-kicker">Stage 5</span>
         <h1>Run unlearning</h1>
         <p>Review the configuration and create the unlearnt model. Evaluation follows as a separate step.</p>
       </div>

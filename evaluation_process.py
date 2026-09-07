@@ -50,6 +50,10 @@ def _evaluation_worker(
         progress_queue.put({"stage": stage, "message": message})
 
     try:
+        api_config = copy.deepcopy(api_config)
+        if "orchestrator_config" in api_config:
+            from gpu.gpu_utils import selected_gpu_ids, set_cuda_visible_devices
+            set_cuda_visible_devices(selected_gpu_ids(api_config["orchestrator_config"]["gpu"]))
         report("starting", "Evaluation process started.")
         if _supports_progress_callback(runner):
             result = runner(api_config, progress_callback=report)
@@ -57,6 +61,8 @@ def _evaluation_worker(
             result = runner(api_config)
         if cancel_event.is_set():
             raise EvaluationCancelledError("Evaluation cancelled by the user.")
+        if result.get("output_files", {}).get("results_jsonl_path"):
+            report("results_saved", f"Evaluation saved to {result['output_files']['results_jsonl_path']}")
         result_queue.put({"status": "success", "result": result})
     except EvaluationCancelledError as exc:
         result_queue.put({"status": "cancelled", "message": str(exc)})

@@ -3,6 +3,7 @@ import type { Project, ProjectStage } from "../../types";
 import { canAccessStage, isStageComplete } from "../../utils/projectValidation";
 
 const steps: Array<{ id: ProjectStage; label: string }> = [
+  { id: "gpu", label: "GPUs" },
   { id: "data", label: "Data" },
   { id: "model", label: "Model" },
   { id: "hyperparameters", label: "Hyperparameters" },

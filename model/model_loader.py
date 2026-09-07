@@ -1,8 +1,7 @@
+import os
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
-
-from gpu.gpu_utils import validate_gpu_id
 
 
 loaded_models = {}
@@ -26,13 +25,11 @@ def load_base_model(
     gpu_id: int,
     hf_key: str | None = None,
 ):
-    validate_gpu_id(gpu_id)
-
-
+    # gpu_id is a logical index after CUDA_VISIBLE_DEVICES remapping.
     model = AutoModelForCausalLM.from_pretrained(
         base_model_path,
         token=hf_key,
-        device_map = "auto",
+        device_map=os.environ.get("UL_MODEL_DEVICE_MAP", "balanced"),
         dtype=torch.bfloat16,
         trust_remote_code=True,
     )
@@ -56,7 +53,7 @@ def load_full_model(
             model,
             adaptor_path,
             is_trainable=True,
-            device_map="auto",
+            device_map=os.environ.get("UL_MODEL_DEVICE_MAP", "balanced"),
         )
 
         model = peft_model.merge_and_unload()
@@ -83,7 +80,7 @@ def load_lora_model(
             model,
             adaptor_path,
             is_trainable=True,
-            device_map="auto",
+            device_map=os.environ.get("UL_MODEL_DEVICE_MAP", "balanced"),
         )
 
         model = peft_model.merge_and_unload()
@@ -110,7 +107,7 @@ def load_adaptor_model(
         model,
         adaptor_path,
         is_trainable=True,
-        device_map="auto",
+        device_map=os.environ.get("UL_MODEL_DEVICE_MAP", "balanced"),
     )
 
     model.train()

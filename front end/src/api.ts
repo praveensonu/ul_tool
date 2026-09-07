@@ -148,3 +148,19 @@ export async function getUnlearningMethods(): Promise<UnlearningMethodInfo[]> {
 
   return Array.isArray(payload.methods) ? payload.methods : [];
 }
+
+
+export type GpuInfo = {
+  id: number;
+  name: string;
+  memory_total_mb: number;
+  memory_free_mb: number;
+  utilization_percent: number;
+  is_available: boolean;
+};
+
+export async function listGpus() {
+  return readJson<{ gpus: GpuInfo[]; available_gpu_ids: number[] }>(
+    await fetch(apiUrl("gpus"))
+  );
+}

@@ -31,7 +31,7 @@ export default function HomePage() {
   async function handleCreate() {
     const project = createDefaultProject();
     await saveProject(project);
-    navigate(`/project/${project.id}/data`);
+    navigate(`/project/${project.id}/gpu`);
   }
 
   async function handleDelete(project: Project) {

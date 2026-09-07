@@ -6,7 +6,6 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
-import torch
 from scipy.optimize import nnls
 from sklearn.cluster import KMeans
 
@@ -56,6 +55,7 @@ def validate_selection_parameters(
 
 
 def _load_gradient_matrix(directory: Path) -> tuple[list[str], np.ndarray]:
+    import torch
     files = sorted(directory.glob("*.pt"), key=lambda path: path.stem)
     if not files:
         raise ValueError(f"No gradient .pt files found in {directory}.")
@@ -374,6 +374,8 @@ def select_and_export_datasets(
     top_n: int | None = None,
     num_clusters: int | None = None,
 ) -> dict:
+    import torch
+
     training_ids, training_matrix = _load_gradient_matrix(training_grads_path)
     _, poison_matrix = _load_gradient_matrix(poison_grads_path)
     if training_matrix.shape[1] != poison_matrix.shape[1]:

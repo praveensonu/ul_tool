@@ -8,6 +8,7 @@ from routes.dataset_routes import router as dataset_router
 from routes.config_routes import router as config_router
 from routes.train_routes import router as train_router
 from routes.evaluation_routes import router as evaluation_router
+from routes.gpu_routes import router as gpu_router
 
 app = FastAPI(
     title="LLM Training Control API",
@@ -25,6 +26,7 @@ app.add_middleware(
 )
 
 api_router = APIRouter(prefix="/api")
+api_router.include_router(gpu_router)
 api_router.include_router(model_router)
 api_router.include_router(dataset_router)
 api_router.include_router(config_router)
@@ -40,6 +42,7 @@ async def health():
 app.include_router(api_router)
 
 # Preserve the original paths for existing scripts and older frontend builds.
+app.include_router(gpu_router, include_in_schema=False)
 app.include_router(model_router, include_in_schema=False)
 app.include_router(dataset_router, include_in_schema=False)
 app.include_router(config_router, include_in_schema=False)

@@ -32,6 +32,9 @@ def _training_worker(
     runner: Callable[[Dict[str, Any]], Dict[str, Any]],
 ) -> None:
     try:
+        if "gpu" in api_config:
+            from gpu.gpu_utils import selected_gpu_ids, set_cuda_visible_devices
+            set_cuda_visible_devices(selected_gpu_ids(api_config["gpu"]))
         result_queue.put({"status": "success", "result": runner(api_config)})
     except Exception as exc:
         traceback.print_exc()

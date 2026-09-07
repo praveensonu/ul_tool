@@ -8,7 +8,7 @@ export type UnlearningMethodInfo = {
 };
 export type StepMode = "max_steps" | "epochs";
 export type LoraTarget = string;
-export type ProjectStage = "data" | "model" | "hyperparameters" | "running" | "evaluation";
+export type ProjectStage = "gpu" | "data" | "model" | "hyperparameters" | "running" | "evaluation";
 export type DataSourceMode = "upload" | "extract";
 export type DataSelectionMethod = "raslik" | "grace";
 
@@ -119,7 +119,7 @@ export type FinalTrainingConfigRequest = {
   hf_key: string | null;
   method: Method;
   unlearning_method: UnlearningMethod;
-  gpu_id: number;
+  gpu_ids: number[];
   forget_set_path: string;
   retain_set_path: string | null;
   hyperparams: Hyperparams;
@@ -166,6 +166,8 @@ export type EvaluationRequest = {
   training_result: Record<string, unknown>;
   embedding_model_name: string;
   embedding_batch_size?: number;
+  batch_size?: number;
+  experiment_name?: string;
   max_new_tokens?: number;
 };
 
@@ -239,6 +241,7 @@ export type ProjectDataConfig = {
   poisonFile: File | null;
   extractionModelName: string;
   extractionMaxLength: number;
+  gradientBatchSize: number;
   extractionAdaptorPath: string;
   selectionMethod: DataSelectionMethod;
   forgetSize: number;
@@ -270,7 +273,7 @@ export type ProjectModelConfig = {
   method: Method;
   adaptorPath: string;
   hfKey: string;
-  gpuId: number;
+  gpuIds: number[];
   selectedTargets: LoraTarget[];
 };
 
@@ -293,12 +296,14 @@ export type ProjectRunState = {
   message: string | null;
   embeddingModelName: string;
   evaluationMaxNewTokens: number;
+  evaluationBatchSize: number;
   evaluationJob: EvaluationJobStatus | null;
   evaluation: EvaluationResponse | null;
   evaluationMessage: string | null;
 };
 
 export type CompletedStages = {
+  gpu: boolean;
   data: boolean;
   model: boolean;
   hyperparameters: boolean;

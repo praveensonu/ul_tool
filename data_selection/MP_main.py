@@ -1,6 +1,23 @@
 import os
 import json
 import argparse
+
+# Resolve configured physical GPUs before importing torch or RASLIK. API launches
+# also supply this environment at process creation, so spawned ranks inherit it.
+if __name__ == "__main__":
+    _parser = argparse.ArgumentParser()
+    _parser.add_argument("--config_path", required=True, type=str)
+    _args = _parser.parse_args()
+    with open(_args.config_path, encoding="utf-8") as _file:
+        _gpu_ids = json.load(_file).get("gpu_ids")
+    if _gpu_ids is not None:
+        if (not isinstance(_gpu_ids, list) or not _gpu_ids
+                or any(type(value) is not int or value < 0 for value in _gpu_ids)
+                or len(_gpu_ids) != len(set(_gpu_ids))):
+            raise ValueError("gpu_ids must contain unique non-negative GPU ids.")
+        os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, _gpu_ids))
+
 import random
 import numpy as np
 import torch.multiprocessing as mp

@@ -51,8 +51,9 @@ export function createDefaultProject(name = "Untitled project"): Project {
     name,
     createdAt: now,
     updatedAt: now,
-    lastStage: "data",
+    lastStage: "gpu",
     completedStages: {
+      gpu: false,
       data: false,
       model: false,
       hyperparameters: false,
@@ -67,6 +68,7 @@ export function createDefaultProject(name = "Untitled project"): Project {
       poisonFile: null,
       extractionModelName: "meta-llama/Llama-3.2-1B-Instruct",
       extractionMaxLength: 512,
+      gradientBatchSize: 2,
       extractionAdaptorPath: "",
       selectionMethod: "raslik",
       forgetSize: 100,
@@ -91,7 +93,7 @@ export function createDefaultProject(name = "Untitled project"): Project {
       method: "full",
       adaptorPath: "",
       hfKey: "",
-      gpuId: 0,
+      gpuIds: [],
       selectedTargets: [...defaultLoraTargets]
     },
     hyperparameters: {
@@ -112,6 +114,7 @@ export function createDefaultProject(name = "Untitled project"): Project {
       message: null,
       embeddingModelName: "",
       evaluationMaxNewTokens: 256,
+      evaluationBatchSize: 4,
       evaluationJob: null,
       evaluation: null,
       evaluationMessage: null
@@ -122,6 +125,7 @@ export function createDefaultProject(name = "Untitled project"): Project {
 function migratedCompletion(lastStage: ProjectStage, hasTraining: boolean, hasEvaluation: boolean): CompletedStages {
   const stageIndex = ["data", "model", "hyperparameters", "running", "evaluation"].indexOf(lastStage);
   return {
+    gpu: false,
     data: stageIndex >= 1,
     model: stageIndex >= 2,
     hyperparameters: stageIndex >= 3,
@@ -134,12 +138,14 @@ export function normalizeProject(value: unknown): Project {
   const raw = (value ?? {}) as Partial<Project> & Record<string, unknown>;
   const base = createDefaultProject(typeof raw.name === "string" ? raw.name : "Untitled project");
   const lastStage: ProjectStage =
+    raw.lastStage === "gpu" ||
+    raw.lastStage === "data" ||
     raw.lastStage === "model" ||
     raw.lastStage === "hyperparameters" ||
     raw.lastStage === "running" ||
     raw.lastStage === "evaluation"
       ? raw.lastStage
-      : "data";
+      : "gpu";
 
   const rawRun = (raw.run ?? {}) as Partial<Project["run"]>;
   const rawData = (raw.data ?? {}) as Partial<Project["data"]>;

@@ -54,7 +54,7 @@ def _load_unlearned_model(
         base_model,
         model_path,
         is_trainable=False,
-        device_map="auto",
+        device_map=os.environ.get("UL_MODEL_DEVICE_MAP", "cuda:0"),
     )
     try:
         tokenizer = load_tokenizer(model_path, hf_key)
@@ -135,7 +135,7 @@ def _json_float(value: Any) -> float:
     return result
 
 
-def _collect_model_outputs(
+def _collect_model_outputs_phase(
     *,
     label: str,
     loader: Callable[[], Any],
@@ -146,9 +146,16 @@ def _collect_model_outputs(
     retain_output_path: str,
     torch_module,
     progress_callback: Optional[ProgressCallback],
+    phase: str = "both",
+    batch_size: int = 4,
 ) -> None:
     from eval.eval_utils import compute_model_outputs
 
+    phase_description = {
+        "metrics": "perplexity and conditional probability",
+        "generation": "generations",
+        "both": "perplexity, conditional probability, and generations",
+    }[phase]
     stage_prefix = "pre" if label == "Pre-unlearning" else "post"
     _report(
         progress_callback,
@@ -179,26 +186,36 @@ def _collect_model_outputs(
         _report(
             progress_callback,
             f"calculating_{stage_prefix}_forget_model_metrics",
-            f"Calculating {label.lower()} forget-set perplexity, conditional probability, and generations.",
+            f"Calculating {label.lower()} forget-set {phase_description}.",
         )
         forget_results = compute_model_outputs(
-            forget_df, model, tokenizer, device, f"{label} forget set"
+            forget_df, model, tokenizer, device, f"{label} forget set", phase=phase,
+            batch_size=batch_size, progress_callback=progress_callback,
         )
+        if phase == "generation":
+            scored = pd.read_parquet(forget_output_path)
+            scored["gen_answer"] = forget_results["gen_answer"]
+            forget_results = scored
         forget_results.to_parquet(forget_output_path, index=False)
 
         _report(
             progress_callback,
             f"calculating_{stage_prefix}_retain_model_metrics",
-            f"Calculating {label.lower()} retain-set perplexity, conditional probability, and generations.",
+            f"Calculating {label.lower()} retain-set {phase_description}.",
         )
         retain_results = compute_model_outputs(
-            retain_df, model, tokenizer, device, f"{label} retain set"
+            retain_df, model, tokenizer, device, f"{label} retain set", phase=phase,
+            batch_size=batch_size, progress_callback=progress_callback,
         )
+        if phase == "generation":
+            scored = pd.read_parquet(retain_output_path)
+            scored["gen_answer"] = retain_results["gen_answer"]
+            retain_results = scored
         retain_results.to_parquet(retain_output_path, index=False)
         _report(
             progress_callback,
             f"stored_{stage_prefix}_model_outputs",
-            f"Stored {label.lower()} generations and language-model metrics.",
+            f"Stored {label.lower()} {phase_description}.",
         )
     finally:
         del tokenizer
@@ -209,6 +226,25 @@ def _collect_model_outputs(
             f"removed_{stage_prefix}_model",
             f"Removed {label.lower()} model from memory.",
         )
+
+
+def _collect_model_outputs(*, gpu_ids: list[int], **kwargs) -> None:
+    # Do not change CUDA visibility after initialization. Explicit model placement
+    # confines scoring to logical cuda:0; generation balances across the selection.
+    previous = os.environ.get("UL_MODEL_DEVICE_MAP")
+    try:
+        os.environ["UL_MODEL_DEVICE_MAP"] = "cuda:0"
+        _collect_model_outputs_phase(
+            **kwargs, phase="metrics" if len(gpu_ids) > 1 else "both"
+        )
+        if len(gpu_ids) > 1:
+            os.environ["UL_MODEL_DEVICE_MAP"] = "balanced"
+            _collect_model_outputs_phase(**kwargs, phase="generation")
+    finally:
+        if previous is None:
+            os.environ.pop("UL_MODEL_DEVICE_MAP", None)
+        else:
+            os.environ["UL_MODEL_DEVICE_MAP"] = previous
 
 
 def _summarize_model(
@@ -269,8 +305,9 @@ def run_eval_orchestrator(
     training_result = api_config["training_result"]
     model_config = orchestrator_config["model"]
     dataset_config = orchestrator_config["dataset"]
-    physical_gpu_id = orchestrator_config["gpu"]["gpu_id"]
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(physical_gpu_id)
+    from gpu.gpu_utils import selected_gpu_ids, set_cuda_visible_devices
+    gpu_ids = selected_gpu_ids(orchestrator_config["gpu"])
+    set_cuda_visible_devices(gpu_ids)
 
     import torch
 
@@ -307,6 +344,8 @@ def run_eval_orchestrator(
     max_new_tokens = api_config.get("max_new_tokens", 256)
 
     _collect_model_outputs(
+        gpu_ids=gpu_ids,
+        batch_size=api_config.get("batch_size", 4),
         label="Pre-unlearning",
         loader=lambda: _load_pre_unlearning_model(model_config),
         forget_source=forget_source,
@@ -318,6 +357,8 @@ def run_eval_orchestrator(
         progress_callback=progress_callback,
     )
     _collect_model_outputs(
+        gpu_ids=gpu_ids,
+        batch_size=api_config.get("batch_size", 4),
         label="Unlearnt",
         loader=lambda: _load_unlearned_model(
             model_path=model_path,
@@ -414,5 +455,11 @@ def run_eval_orchestrator(
         "output_files": output_paths,
         "message": "Pre- and post-unlearning evaluation completed successfully.",
     }
+    from eval.eval_utils import save_evaluation_jsonl
+    from datetime import datetime, timezone
+    result["completed_at"] = datetime.now(timezone.utc).isoformat()
+    experiment_name = api_config.get("experiment_name") or orchestrator_config.get("experiment_name") or Path(model_path).parent.name
+    _report(progress_callback, "saving_results", "Saving evaluation JSONL results.")
+    save_evaluation_jsonl(result, experiment_name)
     _report(progress_callback, "completed", result["message"])
     return result

@@ -45,7 +45,7 @@ export default function ModelStage() {
   return (
     <section className="stage-panel">
       <div className="stage-heading">
-        <span className="stage-kicker">Stage 2</span>
+        <span className="stage-kicker">Stage 3</span>
         <h1>Model</h1>
         <p>Choose the model, optional Hugging Face token, and loading/training method.</p>
       </div>

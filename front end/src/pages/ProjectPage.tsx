@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import ProjectHeader from "../components/layout/ProjectHeader";
 import StepNavigation from "../components/project/StepNavigation";
+import GpuStage from "../components/stages/GpuStage";
 import DataStage from "../components/stages/DataStage";
 import HyperparametersStage from "../components/stages/HyperparametersStage";
 import ModelStage from "../components/stages/ModelStage";
@@ -19,6 +20,7 @@ import {
 } from "../utils/projectValidation";
 
 function StageContent({ stage }: { stage: ProjectStage }) {
+  if (stage === "gpu") return <GpuStage />;
   if (stage === "data") return <DataStage />;
   if (stage === "model") return <ModelStage />;
   if (stage === "hyperparameters") return <HyperparametersStage />;
@@ -32,7 +34,7 @@ function ProjectWorkspace({ requestedStage }: { requestedStage?: string }) {
 
   const requestedIsValid = isProjectStage(requestedStage);
   const preferredStage = requestedIsValid ? requestedStage : project.lastStage;
-  const stage = canAccessStage(project, preferredStage) ? preferredStage : "data";
+  const stage = canAccessStage(project, preferredStage) ? preferredStage : "gpu";
 
   useEffect(() => {
     if (!requestedIsValid || requestedStage !== stage) {

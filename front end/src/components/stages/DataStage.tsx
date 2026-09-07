@@ -302,7 +302,9 @@ export default function DataStage() {
         formData.append("poison_set", data.poisonFile);
         formData.append("prompt_template", buildPromptTemplate(data.promptTemplate));
         formData.append("experiment_name", project.name);
+        project.model.gpuIds.forEach((id) => formData.append("gpu_ids", String(id)));
         formData.append("model_name", data.extractionModelName.trim());
+        formData.append("gradient_batch_size", String(data.gradientBatchSize));
         formData.append("max_length", String(data.extractionMaxLength));
         formData.append("selection_method", data.selectionMethod);
         formData.append("forget_size", String(data.forgetSize));
@@ -372,7 +374,7 @@ export default function DataStage() {
   return (
     <section className="stage-panel">
       <div className="stage-heading">
-        <span className="stage-kicker">Stage 1</span>
+        <span className="stage-kicker">Stage 2</span>
         <h1>Data</h1>
         <p>Upload forget/retain data directly, or extract them with RASLIK or GRACE.</p>
       </div>
@@ -517,6 +519,12 @@ export default function DataStage() {
               </div>
             )}
 
+            <label className="field">
+              Gradient batch size per GPU
+              <input type="number" min={1} value={data.gradientBatchSize} disabled={isExtracting}
+                onChange={(event) => updateDataInput({ gradientBatchSize: Math.max(1, Math.floor(Number(event.target.value) || 1)) })} />
+              <small>Larger batches need more GPU memory. Set to 1 if memory is limited or the model does not support batched gradients.</small>
+            </label>
             <div className="field-grid three">
               <label className="field">
                 <span>Model name or local path</span>

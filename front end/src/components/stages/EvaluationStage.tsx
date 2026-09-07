@@ -79,6 +79,8 @@ export default function EvaluationStage() {
       orchestrator_config: training.orchestrator_config,
       training_result: training.result,
       embedding_model_name: embeddingModelName,
+      experiment_name: project.name,
+      batch_size: project.run.evaluationBatchSize,
       max_new_tokens: project.run.evaluationMaxNewTokens
     };
 
@@ -133,7 +135,7 @@ export default function EvaluationStage() {
   return (
     <section className="stage-panel evaluation-stage">
       <div className="stage-heading">
-        <span className="stage-kicker">Stage 5</span>
+        <span className="stage-kicker">Stage 6</span>
         <h1>Evaluate unlearning</h1>
         <p>Compare the original and unlearnt models while loading only one large model at a time.</p>
       </div>
@@ -146,7 +148,14 @@ export default function EvaluationStage() {
       )}
       {error && <div className="notice error" role="alert"><AlertCircle size={18} /><span>{error}</span></div>}
 
+      {result?.output_files.results_jsonl_path && <p>Results saved to <code>{result.output_files.results_jsonl_path}</code></p>}
       <section className="evaluation-config-card">
+        <label className="field">
+          Evaluation batch size
+          <input type="number" min={1} disabled={isRunning} value={project.run.evaluationBatchSize}
+            onChange={(event) => updateRun({ evaluationBatchSize: Math.max(1, Math.floor(Number(event.target.value) || 1)) })} />
+          <small>Used for generation, conditional probability, and perplexity. Reduce it if GPU memory is limited.</small>
+        </label>
         <div className="field-grid two">
           <label className="field">
             Sentence-transformers model

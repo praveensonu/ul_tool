@@ -35,30 +35,29 @@ class RapidGrad():
         self.seed = seed
 
     def __call__(self, vec, K):
-        if self.is_init == False:
+        # Apply identical permutations/projections to each sample independently.
+        single = vec.ndim == 1
+        vec = vec.unsqueeze(0) if single else vec
+        if vec.ndim != 2:
+            raise ValueError("RapidGrad expects a vector or a batch of vectors.")
+        batch_size, dimension = vec.shape
+        if not self.is_init:
             print("Creating random and shuffling matrices. It may take a few minutes.")
-            D = len(vec)
-            self.init(D)
-        for i, (dim, perm_mat) in enumerate(zip(self.perm_dim_list, self.perm_mat_list)):
-            if i%2 == 0:
-                vec = vec.reshape((dim, -1))
-                vec = vec[perm_mat, :]
+            self.init(dimension)
+        if dimension != self.D:
+            raise ValueError("Gradient dimension changed within a RapidGrad run.")
+        for i, (dim, permutation) in enumerate(zip(self.perm_dim_list, self.perm_mat_list)):
+            if i % 2 == 0:
+                vec = vec.reshape(batch_size, dim, -1)[:, permutation, :]
             else:
-                vec = vec.reshape((-1, dim))
-                vec = vec[:, perm_mat]
-        vec = vec.reshape((-1))
-        vec = vec*self.random_mat
+                vec = vec.reshape(batch_size, -1, dim)[:, :, permutation]
+        vec = vec.reshape(batch_size, dimension) * self.random_mat
 
-        if isinstance(K, list):
-            vec_list = []
-            for k in K:
-                step = self.D//k
-                vec_list.append(torch.sum(vec.reshape((-1, step)), axis=1))
-            return vec_list
-        else:
-            step = self.D//K
-            vec = torch.sum(vec.reshape((-1, step)), axis=1)
-            return vec
+        def project(k):
+            projected = vec.reshape(batch_size, k, self.D // k).sum(dim=2)
+            return projected[0] if single else projected
+
+        return [project(k) for k in K] if isinstance(K, list) else project(K)
 
     def init(self, D):
         self.is_init = True

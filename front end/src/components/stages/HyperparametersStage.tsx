@@ -42,7 +42,7 @@ export default function HyperparametersStage() {
   return (
     <section className="stage-panel">
       <div className="stage-heading">
-        <span className="stage-kicker">Stage 3</span>
+        <span className="stage-kicker">Stage 4</span>
         <h1>Hyperparameters</h1>
         <p>Choose either max steps or epochs, then configure the remaining training parameters.</p>
       </div>

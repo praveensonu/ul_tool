@@ -158,8 +158,9 @@ def get_trainable_parameter_counts(model):
 
 
 def run_orchestrator(api_config: Dict[str, Any]) -> Dict[str, Any]:
-    gpu_id = api_config["gpu"]["gpu_id"]
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    from gpu.gpu_utils import selected_gpu_ids, set_cuda_visible_devices
+    set_cuda_visible_devices(selected_gpu_ids(api_config["gpu"]))
+    os.environ["UL_MODEL_DEVICE_MAP"] = "balanced"
 
     from accelerate import Accelerator
 

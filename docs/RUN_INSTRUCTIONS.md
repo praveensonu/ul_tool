@@ -244,3 +244,36 @@ If the backend was started in the background:
 ps aux | grep "uvicorn main:app"
 kill <PID>
 ```
+
+### Batching and evaluation result files
+
+The Data step exposes **Gradient batch size per GPU** (default `2`). This is sent
+as the `gradient_batch_size` multipart field to caching/extraction endpoints and
+stored in the generated RASLIK configuration under `influence.gradient_batch_size`.
+The cache batches gradient computation using vectorized per-example derivatives,
+then applies RapidGrad compression to the batch. Every sample still produces its
+own gradient file; gradients are not averaged across examples. Existing standalone
+RASLIK configs default to `1`. Batched mode supports caching-only runs with one
+RapidGrad projection size and without DeepSpeed. Set the value to `1` for other
+RASLIK modes, limited GPU memory, or models whose backward operations do not support
+vectorized gradients. Worker failures now fail the job rather than retry forever.
+
+The Evaluation step exposes **Evaluation batch size** (default `4`), sent as JSON
+`batch_size` to `/api/evaluation/start` or `/api/evaluation/run`. It controls
+language-model generation, conditional probability, and perplexity. Padding and
+prompt tokens are excluded from each sample's scoring loss; the metric definition
+is unchanged. Generation uses left padding and keeps each row's token limit.
+Embedding similarity retains its separate `embedding_batch_size` setting (default
+`32`). Batch size is independent of the training batch size, and larger batches
+require more GPU memory. Evaluation reports progress and checks cancellation
+between batches. The previously selected GPU allocation still applies.
+
+The frontend sends the project name as `experiment_name`. After each successful
+evaluation, the full JSON result is appended as one line to
+`outputs/results/<experiment-name>.jsonl`; spaces and unsafe filename characters
+are replaced with hyphens. Repeated evaluations append additional records with
+`completed_at` timestamps. The response includes the location in
+`output_files.results_jsonl_path`, and the UI displays it. Existing per-sample
+Parquet output files remain available. API clients can set `experiment_name`
+explicitly; if omitted, the orchestrator uses the configuration's experiment name
+or the parent directory name of the trained model.

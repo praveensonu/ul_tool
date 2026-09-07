@@ -18,7 +18,7 @@ export function buildTrainingPayload(
     hf_key: optionalText(project.model.hfKey),
     method: project.model.method,
     unlearning_method: h.unlearningMethod,
-    gpu_id: project.model.gpuId,
+    gpu_ids: project.model.gpuIds,
     forget_set_path: dataset.forget_set_path,
     retain_set_path: dataset.retain_set_path,
     hyperparams: {

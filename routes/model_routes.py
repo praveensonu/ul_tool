@@ -1,13 +1,15 @@
 from fastapi import APIRouter, HTTPException
 
 from schemas import LoadModelRequest, LoadModelResponse
-from model.model_loader import load_model_by_method, store_loaded_model
+
 
 router = APIRouter(prefix="/models", tags=["Models"])
 
 
 @router.post("/load", response_model=LoadModelResponse)
 def load_model(request: LoadModelRequest):
+    from model.model_loader import load_model_by_method, store_loaded_model
+
     try:
         model, tokenizer, device, merged = load_model_by_method(
             method=request.method.value,
