@@ -27,6 +27,7 @@ const emptyRun: ProjectRunState = {
   embeddingModelName: "",
   evaluationMaxNewTokens: 256,
   evaluationBatchSize: 4,
+  includeBenchmarks: false,
   evaluationJob: null,
   evaluation: null,
   evaluationMessage: null

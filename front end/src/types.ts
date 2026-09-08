@@ -165,6 +165,7 @@ export type EvaluationRequest = {
   orchestrator_config: Record<string, unknown>;
   training_result: Record<string, unknown>;
   embedding_model_name: string;
+  include_benchmarks?: boolean;
   embedding_batch_size?: number;
   batch_size?: number;
   experiment_name?: string;
@@ -191,6 +192,7 @@ export type ModelUtilityScores = {
 };
 
 export type ModelEvaluationScores = {
+  benchmarks?: { mmlu: number; gpqa: number } | null;
   forget_quality: ForgetQualityScores;
   model_utility: ModelUtilityScores;
 };
@@ -297,6 +299,7 @@ export type ProjectRunState = {
   embeddingModelName: string;
   evaluationMaxNewTokens: number;
   evaluationBatchSize: number;
+  includeBenchmarks: boolean;
   evaluationJob: EvaluationJobStatus | null;
   evaluation: EvaluationResponse | null;
   evaluationMessage: string | null;

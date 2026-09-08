@@ -54,6 +54,8 @@ class EvaluationSchemaTests(unittest.TestCase):
     def test_evaluation_request_accepts_embedding_model_input(self):
         request = EvaluationRequest.model_validate(self.valid_payload())
 
+        self.assertFalse(request.include_benchmarks)
+        self.assertTrue(EvaluationRequest.model_validate({**self.valid_payload(), "include_benchmarks": True}).include_benchmarks)
         self.assertEqual(request.max_new_tokens, 256)
         self.assertEqual(request.embedding_model_name, "local/embedding-model")
 

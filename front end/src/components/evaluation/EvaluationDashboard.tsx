@@ -149,6 +149,17 @@ export default function EvaluationDashboard({ result }: { result: EvaluationResp
         />
       </div>
 
+      {pre.benchmarks && post.benchmarks && (
+        <ComparisonBars
+          title="Benchmark accuracy"
+          subtitle="Global MMLU (5-shot) and GPQA Main (0-shot) accuracy on a 0–1 scale."
+          fixedMaximum={1}
+          rows={[
+            { label: "MMLU", pre: pre.benchmarks.mmlu, post: post.benchmarks.mmlu },
+            { label: "GPQA", pre: pre.benchmarks.gpqa, post: post.benchmarks.gpqa }
+          ]}
+        />
+      )}
       <section className="metric-table-card">
         <h3>Detailed comparison</h3>
         <div className="table-wrap">

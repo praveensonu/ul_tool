@@ -148,7 +148,9 @@ def _collect_model_outputs_phase(
     progress_callback: Optional[ProgressCallback],
     phase: str = "both",
     batch_size: int = 4,
-) -> None:
+    hf_key: str | None = None,
+    include_benchmarks: bool = False,
+) -> dict | None:
     from eval.eval_utils import compute_model_outputs
 
     phase_description = {
@@ -217,6 +219,17 @@ def _collect_model_outputs_phase(
             f"stored_{stage_prefix}_model_outputs",
             f"Stored {label.lower()} {phase_description}.",
         )
+        if include_benchmarks and phase != "generation":
+            from eval.benchmarks import evaluate_benchmarks
+
+            def report_benchmark(stage, message):
+                _report(progress_callback, f"{stage_prefix}_{stage}", f"{label}: {message}")
+
+            return evaluate_benchmarks(
+                model, tokenizer, batch_size=batch_size, hf_key=hf_key,
+                progress_callback=report_benchmark,
+            )
+        return None
     finally:
         del tokenizer
         del model
@@ -228,18 +241,19 @@ def _collect_model_outputs_phase(
         )
 
 
-def _collect_model_outputs(*, gpu_ids: list[int], **kwargs) -> None:
+def _collect_model_outputs(*, gpu_ids: list[int], **kwargs) -> dict | None:
     # Do not change CUDA visibility after initialization. Explicit model placement
     # confines scoring to logical cuda:0; generation balances across the selection.
     previous = os.environ.get("UL_MODEL_DEVICE_MAP")
     try:
         os.environ["UL_MODEL_DEVICE_MAP"] = "cuda:0"
-        _collect_model_outputs_phase(
+        benchmarks = _collect_model_outputs_phase(
             **kwargs, phase="metrics" if len(gpu_ids) > 1 else "both"
         )
         if len(gpu_ids) > 1:
             os.environ["UL_MODEL_DEVICE_MAP"] = "balanced"
             _collect_model_outputs_phase(**kwargs, phase="generation")
+        return benchmarks
     finally:
         if previous is None:
             os.environ.pop("UL_MODEL_DEVICE_MAP", None)
@@ -343,9 +357,11 @@ def run_eval_orchestrator(
     retain_source = read_file(retain_set_path)
     max_new_tokens = api_config.get("max_new_tokens", 256)
 
-    _collect_model_outputs(
+    pre_benchmarks = _collect_model_outputs(
         gpu_ids=gpu_ids,
         batch_size=api_config.get("batch_size", 4),
+        include_benchmarks=api_config.get("include_benchmarks", False),
+        hf_key=model_config.get("hf_key"),
         label="Pre-unlearning",
         loader=lambda: _load_pre_unlearning_model(model_config),
         forget_source=forget_source,
@@ -356,9 +372,11 @@ def run_eval_orchestrator(
         torch_module=torch,
         progress_callback=progress_callback,
     )
-    _collect_model_outputs(
+    post_benchmarks = _collect_model_outputs(
         gpu_ids=gpu_ids,
         batch_size=api_config.get("batch_size", 4),
+        include_benchmarks=api_config.get("include_benchmarks", False),
+        hf_key=model_config.get("hf_key"),
         label="Unlearnt",
         loader=lambda: _load_unlearned_model(
             model_path=model_path,
@@ -450,8 +468,8 @@ def run_eval_orchestrator(
         "embedding_model_name": embedding_model_name,
         "forget_set_path": forget_set_path,
         "retain_set_path": retain_set_path,
-        "pre_unlearning": _summarize_model(pre_forget, pre_retain),
-        "post_unlearning": _summarize_model(post_forget, post_retain),
+        "pre_unlearning": {**_summarize_model(pre_forget, pre_retain), "benchmarks": pre_benchmarks},
+        "post_unlearning": {**_summarize_model(post_forget, post_retain), "benchmarks": post_benchmarks},
         "output_files": output_paths,
         "message": "Pre- and post-unlearning evaluation completed successfully.",
     }

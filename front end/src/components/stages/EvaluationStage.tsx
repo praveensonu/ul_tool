@@ -81,6 +81,7 @@ export default function EvaluationStage() {
       embedding_model_name: embeddingModelName,
       experiment_name: project.name,
       batch_size: project.run.evaluationBatchSize,
+      include_benchmarks: project.run.includeBenchmarks,
       max_new_tokens: project.run.evaluationMaxNewTokens
     };
 
@@ -150,6 +151,11 @@ export default function EvaluationStage() {
 
       {result?.output_files.results_jsonl_path && <p>Results saved to <code>{result.output_files.results_jsonl_path}</code></p>}
       <section className="evaluation-config-card">
+        <label>
+          <input type="checkbox" checked={project.run.includeBenchmarks} disabled={isRunning}
+            onChange={(event) => updateRun({ includeBenchmarks: event.target.checked })} />
+          {" "}Include benchmark evaluation (MMLU and GPQA)
+        </label>
         <label className="field">
           Evaluation batch size
           <input type="number" min={1} disabled={isRunning} value={project.run.evaluationBatchSize}

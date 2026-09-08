@@ -115,6 +115,7 @@ export function createDefaultProject(name = "Untitled project"): Project {
       embeddingModelName: "",
       evaluationMaxNewTokens: 256,
       evaluationBatchSize: 4,
+      includeBenchmarks: false,
       evaluationJob: null,
       evaluation: null,
       evaluationMessage: null

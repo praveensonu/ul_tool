@@ -277,3 +277,39 @@ are replaced with hyphens. Repeated evaluations append additional records with
 Parquet output files remain available. API clients can set `experiment_name`
 explicitly; if omitted, the orchestrator uses the configuration's experiment name
 or the parent directory name of the trained model.
+
+### MMLU and GPQA benchmarks
+
+Check **Include benchmark evaluation (MMLU and GPQA)** to run EleutherAI
+`lm_eval` against each already-loaded model, after
+its forget/retain scoring and before releasing it. The checkbox defaults to off
+and is disabled while evaluation is running. API clients can opt in with
+`include_benchmarks: true`; omitted or false skips both benchmarks and returns
+`benchmarks: null` for each model. The selection is saved with the project.
+Benchmark evaluation uses the first selected GPU
+and the evaluation batch size. Benchmarks run once per model, including when a
+separate multi-GPU generation phase is needed; no extra model load is introduced.
+
+Install the updated requirements (`lm_eval[hf]==0.4.13` is included). Benchmark
+datasets are downloaded on first use and subsequently use the Hugging Face cache.
+GPQA requires accepting the dataset terms at
+<https://huggingface.co/datasets/Idavidrein/gpqa>. Use the project's configured HF
+key with access to that dataset, or an existing `HF_TOKEN`/Hugging Face login.
+Progress and cancellation checks occur between benchmark scoring batches.
+A benchmark failure fails evaluation instead of silently reporting a missing score.
+
+The fixed benchmark protocol is:
+
+- **MMLU:** `mmlu`, 5-shot, full test set, sample-weighted global `acc` from the
+  harness's MMLU group.
+- **GPQA:** `gpqa_main_zeroshot`, 0-shot, full GPQA Main set, global `acc`.
+
+Both use multiple-choice likelihood scoring with the harness task prompts and
+fixed seeds, without applying a chat template. No sample limits are applied.
+Only `benchmarks.mmlu` and `benchmarks.gpqa` (accuracy on a 0–1 scale) are returned
+under each of `pre_unlearning` and `post_unlearning`, displayed in the dashboard,
+and saved in the experiment JSONL record. Subject scores, individual answers,
+normalized-accuracy alternatives, and standard errors are not displayed or saved.
+
+See the upstream [Python API](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/python-api.md)
+and [GPQA task documentation](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/tasks/gpqa/README.md).

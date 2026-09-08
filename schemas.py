@@ -280,6 +280,7 @@ class EvaluationRequest(BaseModel):
     orchestrator_config: Dict[str, Any]
     training_result: EvaluationTrainingResult
     embedding_model_name: str = Field(..., min_length=1)
+    include_benchmarks: bool = False
     embedding_batch_size: int = Field(default=32, ge=1)
     batch_size: int = Field(default=4, ge=1)
     experiment_name: Optional[str] = Field(default=None, min_length=1)
@@ -333,7 +334,13 @@ class ModelUtilityScores(BaseModel):
     component_scores: List[float]
 
 
+class BenchmarkScores(BaseModel):
+    mmlu: float = Field(..., ge=0, le=1)
+    gpqa: float = Field(..., ge=0, le=1)
+
+
 class ModelEvaluationScores(BaseModel):
+    benchmarks: Optional[BenchmarkScores] = None
     forget_quality: ForgetQualityScores
     model_utility: ModelUtilityScores
 
