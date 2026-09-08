@@ -30,8 +30,7 @@ class GpuSelectionTests(unittest.TestCase):
     def test_only_free_gpus_are_available(self, info):
         info.return_value = [{"id": 2, "is_available": True}, {"id": 6, "is_available": False}]
         self.assertEqual(get_available_gpu_ids(), [2])
-        with self.assertRaisesRegex(ValueError, "busy"):
-            validate_gpu_ids([6], require_available=True)
+        self.assertEqual(validate_gpu_ids([6, 2]), [6, 2])
         with self.assertRaisesRegex(ValueError, "Invalid"):
             validate_gpu_ids([7])
 

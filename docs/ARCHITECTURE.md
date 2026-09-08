@@ -982,11 +982,12 @@ When editing this project:
 ### GPU selection
 
 Projects start at the GPUs step, before Data. `/api/gpus` lists physical device IDs,
-free memory, utilization, and availability. Users select one or more free devices;
+free memory, utilization, and availability. Users can select any installed devices;
 the ordered `gpu_ids` list is saved with the project and sent as repeated multipart
 `gpu_ids` fields for extraction and as a JSON array for training. Job endpoints
-recheck availability when starting work. This is an availability check, not a
-reservation against other programs using the machine.
+verify that the selected device IDs exist, but do not reject GPUs based on usage.
+Idle/in-use status and memory figures are informational; users decide which GPUs
+to use. Refreshing the list preserves selections for GPUs that are still installed.
 
 Extraction subprocesses receive `CUDA_VISIBLE_DEVICES` in their launch environment.
 `MP_main.py` also reads `gpu_ids` from its config before importing torch for direct

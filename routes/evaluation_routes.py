@@ -22,7 +22,7 @@ router = APIRouter(prefix="/evaluation", tags=["Evaluation"])
 def _validate_gpus(request: EvaluationRequest) -> None:
     from gpu.gpu_utils import validate_gpu_ids
     try:
-        validate_gpu_ids(request.orchestrator_config["gpu"]["gpu_ids"], require_available=True)
+        validate_gpu_ids(request.orchestrator_config["gpu"]["gpu_ids"])
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

@@ -32,7 +32,7 @@ def run_training(request: FinalTrainingConfigRequest):
 
     try:
         from gpu.gpu_utils import validate_gpu_ids
-        validate_gpu_ids(request.gpu_ids, require_available=True)
+        validate_gpu_ids(request.gpu_ids)
         orchestrator_config = build_orchestrator_config(request)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -86,7 +86,8 @@ def get_available_gpu_ids() -> list[int]:
     return [device["id"] for device in get_gpu_info() if device["is_available"]]
 
 
-def validate_gpu_ids(gpu_ids: Iterable[int], *, require_available: bool = False) -> list[int]:
+def validate_gpu_ids(gpu_ids: Iterable[int]) -> list[int]:
+    """Validate installed device IDs; current GPU usage is informational only."""
     selected = list(gpu_ids)
     if not selected:
         raise ValueError("Select at least one GPU.")
@@ -100,10 +101,6 @@ def validate_gpu_ids(gpu_ids: Iterable[int], *, require_available: bool = False)
         raise ValueError(
             f"Invalid GPU ids {invalid}. Installed GPU ids are: {sorted(known)}"
         )
-    if require_available:
-        busy = [d["id"] for d in devices if d["id"] in selected and not d["is_available"]]
-        if busy:
-            raise ValueError(f"Selected GPUs are busy: {busy}. Refresh and select free GPUs.")
     return selected
 
 

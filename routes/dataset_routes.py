@@ -99,7 +99,7 @@ def cache_gradients(
 
     try:
         from gpu.gpu_utils import validate_gpu_ids
-        validate_gpu_ids(gpu_ids, require_available=True)
+        validate_gpu_ids(gpu_ids)
         return gradient_cache_manager.run(
             gpu_ids=gpu_ids,
             gradient_batch_size=gradient_batch_size,
@@ -150,7 +150,7 @@ def extract_forget_retain(
 
     try:
         from gpu.gpu_utils import validate_gpu_ids
-        validate_gpu_ids(gpu_ids, require_available=True)
+        validate_gpu_ids(gpu_ids)
         return gradient_cache_manager.extract(
             gpu_ids=gpu_ids,
             gradient_batch_size=gradient_batch_size,
@@ -205,7 +205,7 @@ def start_forget_retain_extraction(
 
     try:
         from gpu.gpu_utils import validate_gpu_ids
-        validate_gpu_ids(gpu_ids, require_available=True)
+        validate_gpu_ids(gpu_ids)
         return gradient_cache_manager.start_extract(
             gpu_ids=gpu_ids,
             gradient_batch_size=gradient_batch_size,
