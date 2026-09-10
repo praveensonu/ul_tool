@@ -22,6 +22,11 @@ export function buildTrainingPayload(
     forget_set_path: dataset.forget_set_path,
     retain_set_path: dataset.retain_set_path,
     hyperparams: {
+      method: h.unlearningMethod === "simnpo"
+        ? { beta: Number(h.simnpoBeta), delta: Number(h.simnpoDelta) }
+        : h.unlearningMethod === "dpo"
+          ? { beta: Number(h.dpoBeta) }
+          : h.unlearningMethod === "npo" ? { beta: Number(h.npoBeta) } : {},
       general: {
         max_steps: h.stepMode === "max_steps" ? h.maxSteps : null,
         epochs: h.stepMode === "epochs" ? h.epochs : null,

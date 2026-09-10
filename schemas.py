@@ -191,7 +191,13 @@ class MemoryHyperParams(BaseModel):
         return value
 
 
+class MethodHyperParams(BaseModel):
+    beta: Optional[float] = Field(None, gt=0, allow_inf_nan=False)
+    delta: Optional[float] = Field(None, allow_inf_nan=False)
+
+
 class HyperParamsConfig(BaseModel):
+    method: MethodHyperParams = Field(default_factory=MethodHyperParams)
     general: GeneralHyperParams
     optimization: OptimizationHyperParams
     schedule: ScheduleHyperParams
@@ -218,6 +224,14 @@ class FinalTrainingConfigRequest(BaseModel):
         from gpu.gpu_utils import selected_gpu_ids
         self.gpu_ids = selected_gpu_ids(self.model_dump(exclude_none=True))
         self.gpu_id = self.gpu_ids[0]
+
+        supplied = self.hyperparams.method.model_dump(exclude_none=True)
+        allowed = registry.UNLEARNING_METHOD_ARGS[self.unlearning_method.value]
+        unsupported = set(supplied) - set(allowed)
+        if unsupported:
+            raise ValueError(
+                f"Unsupported hyperparameters for {self.unlearning_method.value}: {sorted(unsupported)}"
+            )
 
         if self.method == LoadMethod.lora:
             if self.hyperparams.lora_settings is None:

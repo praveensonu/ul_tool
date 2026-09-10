@@ -28,6 +28,9 @@ export default function HyperparametersStage() {
     };
   }, []);
 
+  const betaKey = h.unlearningMethod === "dpo" ? "dpoBeta"
+    : h.unlearningMethod === "npo" ? "npoBeta"
+      : h.unlearningMethod === "simnpo" ? "simnpoBeta" : null;
   const selected = methods.find((method) => method.value === h.unlearningMethod);
   const hasRetainSet = Boolean(project.data.preparedRetainFile ?? project.data.retainFile);
   const retainMissing = Boolean(selected?.requires_retain) && !hasRetainSet;
@@ -79,6 +82,24 @@ export default function HyperparametersStage() {
               : "The strengths apply across methods; retention strength is used when training includes a retain loss."}
           </small>
         </label>
+
+        {betaKey && (
+          <div className="field-grid two">
+            {h.unlearningMethod === "simnpo" && (
+              <label className="field">
+                <span>Delta</span>
+                <input type="number" step="any" value={h.simnpoDelta}
+                  onChange={(event) => updateHyperparameters({ simnpoDelta: event.target.value })} />
+              </label>
+            )}
+            <label className="field">
+              <span>Beta</span>
+              <input type="number" min={0} step="any" value={h[betaKey]}
+                onChange={(event) => updateHyperparameters({ [betaKey]: event.target.value })} />
+              <small>Must be greater than zero.</small>
+            </label>
+          </div>
+        )}
 
         <div className="field">
           <FieldLabel help={fieldHelp.trainingLength}>Unlearning length</FieldLabel>

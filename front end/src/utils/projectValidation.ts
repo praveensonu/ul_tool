@@ -41,6 +41,11 @@ export function isModelValid(project: Project) {
 
 export function isHyperparametersValid(project: Project) {
   const h = project.hyperparameters;
+  const beta = h.unlearningMethod === "dpo" ? h.dpoBeta
+    : h.unlearningMethod === "npo" ? h.npoBeta
+      : h.unlearningMethod === "simnpo" ? h.simnpoBeta : null;
+  const methodOk = (beta === null || (beta.trim() !== "" && Number.isFinite(Number(beta)) && Number(beta) > 0))
+    && (h.unlearningMethod !== "simnpo" || (h.simnpoDelta.trim() !== "" && Number.isFinite(Number(h.simnpoDelta))));
   const scheduleOk = h.stepMode === "max_steps" ? h.maxSteps > 0 : h.epochs > 0;
   const lr = Number(h.learningRate);
   const learningRateOk = Number.isFinite(lr) && lr > 0;
@@ -54,6 +59,7 @@ export function isHyperparametersValid(project: Project) {
     );
 
   return (
+    methodOk &&
     scheduleOk &&
     retainOk &&
     learningRateOk &&

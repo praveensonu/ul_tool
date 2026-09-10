@@ -73,7 +73,7 @@ def build_trainer_kwargs(
     return kwargs
 
 
-def build_unlearning_run(method, forget_df, retain_df, tokenizer, context_length, gamma=1.0, alpha=1.0):
+def build_unlearning_run(method, forget_df, retain_df, tokenizer, context_length, gamma=1.0, alpha=1.0, method_hyperparams=None):
     """Resolve a method name to its dataset, collator, trainer class and trainer args."""
 
     from unlearning.data_helpers.collators import (
@@ -107,6 +107,10 @@ def build_unlearning_run(method, forget_df, retain_df, tokenizer, context_length
         raise ValueError(f"Unlearning method '{method}' requires a retain set.")
 
     trainer_args = dict(UNLEARNING_METHOD_ARGS[method], gamma=gamma, alpha=alpha)
+    for key, value in (method_hyperparams or {}).items():
+        if key not in {"beta", "delta"} or key not in trainer_args:
+            raise ValueError(f"Unsupported hyperparameter '{key}' for {method}.")
+        trainer_args[key] = value
     dataset_kwargs = {
         "tokenizer": tokenizer,
         "max_length": context_length,
@@ -233,6 +237,7 @@ def run_orchestrator(api_config: Dict[str, Any]) -> Dict[str, Any]:
             context_length=context_length,
             gamma=hp["general"].get("gamma", 1.0),
             alpha=hp["general"].get("alpha", 1.0),
+            method_hyperparams=hp.get("method"),
         )
     )
 

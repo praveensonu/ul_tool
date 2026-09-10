@@ -91,6 +91,7 @@ export type JobCancelResponse = {
 };
 
 export type Hyperparams = {
+  method: { beta?: number; delta?: number };
   general: {
     max_steps: number | null;
     epochs: number | null;
@@ -291,6 +292,10 @@ export type ProjectHyperparametersConfig = {
   contextLength: number;
   batchSize: number;
   gradAccum: number;
+  dpoBeta: string;
+  npoBeta: string;
+  simnpoBeta: string;
+  simnpoDelta: string;
   forgettingStrength: string;
   retentionStrength: string;
   weightDecay: number;

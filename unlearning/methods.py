@@ -3,8 +3,8 @@
 The single source of truth for which methods exist, what each one needs from the
 dataset, and the hyperparameters it runs with. The API schemas, the orchestrator and
 the frontend all derive from this, so a new method is added here only. Trainer
-arguments are open-unlearning's `configs/trainer/*.yaml` and are not user-configurable
-yet, apart from the shared gamma/alpha strengths supplied by the user.
+defaults come from open-unlearning's `configs/trainer/*.yaml`. Users can override
+beta/delta and supply the shared gamma/alpha strengths.
 
 Kept dependency-free so both the API process and the training subprocess can import it
 cheaply.

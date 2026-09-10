@@ -1,4 +1,5 @@
 from schemas import FinalTrainingConfigRequest
+from unlearning.methods import UNLEARNING_METHOD_ARGS
 
 
 def build_orchestrator_config(request: FinalTrainingConfigRequest) -> dict:
@@ -21,6 +22,11 @@ def build_orchestrator_config(request: FinalTrainingConfigRequest) -> dict:
             "method": request.unlearning_method.value,
         },
         "hyperparams": {
+            "method": {
+                **{key: value for key, value in UNLEARNING_METHOD_ARGS[request.unlearning_method.value].items()
+                   if key in {"beta", "delta"}},
+                **request.hyperparams.method.model_dump(exclude_none=True),
+            },
             "general": {
                 "gamma": request.hyperparams.general.gamma,
                 "alpha": request.hyperparams.general.alpha,
