@@ -15,23 +15,41 @@ from unlearning.gd.losses import (
 class GradDiffTrainer(UnlearnTrainer):
     """Base for the retain-aware methods: owns the reference model and retain loss."""
 
+    requires_single_device = False
+
     def __init__(
         self,
-        gamma=1.0,
-        alpha=1.0,
         retain_loss_type="NLL",
         **hf_trainer_kwargs,
     ):
+        if self.requires_single_device:
+            args = hf_trainer_kwargs.get("args")
+            if args is not None:
+                # Resolve the cached device before overriding Trainer's GPU count.
+                # This prevents DataParallel even if CUDA was initialized earlier.
+                device = args.device
+                args._n_gpu = 1 if device.type == "cuda" else 0
         super().__init__(**hf_trainer_kwargs)
-        self.gamma = gamma
-        self.alpha = alpha
         self.retain_loss_type = retain_loss_type
         self.ref_model = None
         if retain_loss_type == "KL":
             self.ref_model = self._prepare_ref_model(self.model)
 
     def _prepare_ref_model(self, model):
-        ref_model = copy.deepcopy(model).to(self.accelerator.device)
+        device = self.accelerator.device
+        if self.requires_single_device:
+            from accelerate.hooks import remove_hook_from_module
+
+            # Consolidate the policy before copying it, including any buffers
+            # left on CPU. Do not reject a user's multi-GPU selection.
+            remove_hook_from_module(model, recurse=True)
+            model.to(device)
+            if hasattr(model, "hf_device_map"):
+                model.hf_device_map = {"": str(device)}
+            self.args._n_gpu = 1 if device.type == "cuda" else 0
+            self.is_model_parallel = False
+        ref_model = copy.deepcopy(model).to(device)
+        ref_model.requires_grad_(False)
         ref_model.eval()
         if self.is_deepspeed_enabled:
             ref_model = self._prepare_deepspeed(ref_model)

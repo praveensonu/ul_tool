@@ -7,7 +7,7 @@ import {
   uploadDatasets
 } from "../../api";
 import { useProject } from "../../state/ProjectContext";
-import { buildPromptTemplate, promptFamily } from "../../defaults";
+import { buildPromptTemplate } from "../../defaults";
 import type {
   DataSelectionMethod,
   ProjectPreviewRow
@@ -178,7 +178,7 @@ export default function DataStage() {
     const formData = new FormData();
     formData.append("forget_set", forgetFile);
     if (retainFile) formData.append("retain_set", retainFile);
-    formData.append("prompt_template", buildPromptTemplate(data.promptTemplate, project.model.modelName));
+    formData.append("prompt_template", buildPromptTemplate(data.promptTemplate));
 
     try {
       const response = await uploadDatasets(formData);
@@ -257,12 +257,10 @@ export default function DataStage() {
     setUploading(true);
 
     try {
+      buildPromptTemplate(data.promptTemplate);
       if (data.sourceMode === "extract") {
         if (!data.fullFile || !data.poisonFile) {
           throw new Error("Choose both the full dataset and poison set first.");
-        }
-        if (!data.promptTemplate.trim()) {
-          throw new Error("Enter the prompt that should precede each dataset question.");
         }
         if (!data.extractionModelName.trim()) {
           throw new Error("Enter a model name or local path.");
@@ -292,7 +290,7 @@ export default function DataStage() {
         const formData = new FormData();
         formData.append("full_dataset", data.fullFile);
         formData.append("poison_set", data.poisonFile);
-        formData.append("prompt_template", buildPromptTemplate(data.promptTemplate, data.extractionModelName));
+        formData.append("prompt_template", buildPromptTemplate(data.promptTemplate));
         formData.append("experiment_name", project.name);
         project.model.gpuIds.forEach((id) => formData.append("gpu_ids", String(id)));
         formData.append("model_name", data.extractionModelName.trim());
@@ -564,12 +562,12 @@ export default function DataStage() {
         )}
 
         <label className="field prompt-field">
-          <FieldLabel help={fieldHelp.prompt}>Prompt</FieldLabel>
+          <FieldLabel help={fieldHelp.prompt}>Prompt template</FieldLabel>
 
           <textarea
             rows={3}
             value={data.promptTemplate}
-            placeholder="Write only the instruction for the model..."
+            placeholder={"Question: {question}\nAnswer: "}
             onChange={(event) =>
               updateDataInput({
                 promptTemplate: event.target.value
@@ -578,7 +576,7 @@ export default function DataStage() {
           />
 
           <small>
-            {promptFamily(data.sourceMode === "extract" ? data.extractionModelName : project.model.modelName)} template selected automatically. The row question is appended for you.
+            Include {"{question}"} where the question column should appear. The answer is appended after the complete template.
           </small>
         </label>
         </fieldset>

@@ -14,4 +14,5 @@ class GradAscentTrainer(UnlearnTrainer):
             "labels": inputs["labels"],
         }
         loss, outputs = compute_forget_loss(model, forget_inputs)
+        loss = self.gamma * loss
         return (loss, outputs) if return_outputs else loss

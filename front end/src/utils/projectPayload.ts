@@ -26,6 +26,8 @@ export function buildTrainingPayload(
         max_steps: h.stepMode === "max_steps" ? h.maxSteps : null,
         epochs: h.stepMode === "epochs" ? h.epochs : null,
         learning_rate: h.learningRate,
+        gamma: Number(h.forgettingStrength),
+        alpha: Number(h.retentionStrength),
         context_length: h.contextLength
       },
       optimization: {

@@ -73,10 +73,11 @@ def build_trainer_kwargs(
     return kwargs
 
 
-def build_unlearning_run(method, forget_df, retain_df, tokenizer, context_length):
+def build_unlearning_run(method, forget_df, retain_df, tokenizer, context_length, gamma=1.0, alpha=1.0):
     """Resolve a method name to its dataset, collator, trainer class and trainer args."""
 
     from unlearning.data_helpers.collators import (
+        DpoForgetCollator,
         DpoRetainCollator,
         ForgetCollator,
         RetainCollator,
@@ -84,12 +85,13 @@ def build_unlearning_run(method, forget_df, retain_df, tokenizer, context_length
     from unlearning.data_helpers.data_module import (
         ForgetOnlyDataset,
         ForgetRetainDataset,
+        IdkForgetOnlyDataset,
         IdkForgetRetainDataset,
     )
-    from unlearning.dpo.trainer import DPOTrainer
+    from unlearning.dpo.trainer import DPOForgetOnlyTrainer, DPOTrainer
     from unlearning.ga.trainer import GradAscentTrainer
     from unlearning.gd.trainer import GradDiffTrainer
-    from unlearning.npo.trainer import NPOTrainer
+    from unlearning.npo.trainer import NPOForgetOnlyTrainer, NPOTrainer
     from unlearning.snpo.trainer import (
         SimNPOForgetOnlyTrainer,
         SimNPOForgetRetainTrainer,
@@ -104,7 +106,7 @@ def build_unlearning_run(method, forget_df, retain_df, tokenizer, context_length
     if method in RETAIN_REQUIRED_METHODS and retain_df is None:
         raise ValueError(f"Unlearning method '{method}' requires a retain set.")
 
-    trainer_args = dict(UNLEARNING_METHOD_ARGS[method])
+    trainer_args = dict(UNLEARNING_METHOD_ARGS[method], gamma=gamma, alpha=alpha)
     dataset_kwargs = {
         "tokenizer": tokenizer,
         "max_length": context_length,
@@ -115,14 +117,19 @@ def build_unlearning_run(method, forget_df, retain_df, tokenizer, context_length
     forget_only = method in FORGET_ONLY_METHODS or retain_df is None
 
     if forget_only:
-        train_dataset = ForgetOnlyDataset(forget_data=forget_df, **dataset_kwargs)
-        data_collator = ForgetCollator
-        if method == "grad_ascent":
-            trainer_cls = GradAscentTrainer
+        if method == "dpo":
+            train_dataset = IdkForgetOnlyDataset(forget_data=forget_df, **dataset_kwargs)
+            data_collator = DpoForgetCollator
         else:
-            trainer_cls = SimNPOForgetOnlyTrainer
-            trainer_args.pop("alpha", None)
-            trainer_args.pop("retain_loss_type", None)
+            train_dataset = ForgetOnlyDataset(forget_data=forget_df, **dataset_kwargs)
+            data_collator = ForgetCollator
+        trainer_cls = {
+            "grad_ascent": GradAscentTrainer,
+            "simnpo": SimNPOForgetOnlyTrainer,
+            "npo": NPOForgetOnlyTrainer,
+            "dpo": DPOForgetOnlyTrainer,
+        }[method]
+        trainer_args.pop("retain_loss_type", None)
     elif method == "dpo":
         train_dataset = IdkForgetRetainDataset(
             forget_data=forget_df, retain_data=retain_df, **dataset_kwargs
@@ -157,10 +164,22 @@ def get_trainable_parameter_counts(model):
     return trainable_params, total_params
 
 
-def run_orchestrator(api_config: Dict[str, Any]) -> Dict[str, Any]:
+def configure_training_devices(api_config: Dict[str, Any]) -> None:
+    """Choose visibility before Accelerate or model loading initializes CUDA."""
     from gpu.gpu_utils import selected_gpu_ids, set_cuda_visible_devices
-    set_cuda_visible_devices(selected_gpu_ids(api_config["gpu"]))
-    os.environ["UL_MODEL_DEVICE_MAP"] = "balanced"
+
+    method = api_config.get("unlearning", {}).get("method", DEFAULT_UNLEARNING_METHOD)
+    gpu_ids = selected_gpu_ids(api_config["gpu"])
+    single_gpu = method in {"dpo", "npo"}
+    if single_gpu and int(os.environ.get("WORLD_SIZE", "1")) > 1:
+        raise ValueError("DPO and NPO require a single training process on one GPU.")
+    set_cuda_visible_devices(gpu_ids[:1] if single_gpu else gpu_ids)
+    # The first selected physical GPU is remapped to logical cuda:0.
+    os.environ["UL_MODEL_DEVICE_MAP"] = "cuda:0" if single_gpu else "balanced"
+
+
+def run_orchestrator(api_config: Dict[str, Any]) -> Dict[str, Any]:
+    configure_training_devices(api_config)
 
     from accelerate import Accelerator
 
@@ -212,6 +231,8 @@ def run_orchestrator(api_config: Dict[str, Any]) -> Dict[str, Any]:
             retain_df=retain_df,
             tokenizer=tokenizer,
             context_length=context_length,
+            gamma=hp["general"].get("gamma", 1.0),
+            alpha=hp["general"].get("alpha", 1.0),
         )
     )
 

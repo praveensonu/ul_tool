@@ -49,7 +49,18 @@ export default function HyperparametersStage() {
       </div>
 
       <div className="stage-form">
-        <div className="common-controls"><span className="eyebrow">Most important controls</span><div><article><strong>Forgetting strength</strong><p>Primarily shaped by the objective, learning rate, and unlearning length.</p></article><article><strong>Retention strength</strong><p>Protected by a retain-aware method and a representative retain set.</p></article></div></div>
+        <div className="field-grid two">
+          <label className="field">
+            <span>Forgetting strength</span>
+            <input type="number" min={0} step="any" value={h.forgettingStrength}
+              onChange={(event) => updateHyperparameters({ forgettingStrength: event.target.value })} />
+          </label>
+          <label className="field">
+            <span>Retention strength</span>
+            <input type="number" min={0} step="any" value={h.retentionStrength}
+              onChange={(event) => updateHyperparameters({ retentionStrength: event.target.value })} />
+          </label>
+        </div>
         <label className="field">
           <FieldLabel help={fieldHelp.unlearningMethod}>Unlearning method</FieldLabel>
           <select
@@ -65,7 +76,7 @@ export default function HyperparametersStage() {
           <small>
             {retainMissing
               ? `${selected?.label ?? h.unlearningMethod} needs a retain set: go back to the data stage and add one.`
-              : "Method hyperparameters use the open-unlearning defaults."}
+              : "The strengths apply across methods; retention strength is used when training includes a retain loss."}
           </small>
         </label>
 

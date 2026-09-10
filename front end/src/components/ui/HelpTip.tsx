@@ -22,7 +22,7 @@ export const fieldHelp = {
   maxLength: "Maximum token length used while extracting gradients.",
   adapter: "Optional path to an existing adapter or LoRA checkpoint.",
   keepGradients: "Keeps cached training and poison gradients after extraction for reuse or inspection.",
-  prompt: "Write only the instruction. The dataset question and the selected model's chat template are added automatically.",
+  prompt: "Include {question} where the question column should appear. The answer is appended after the complete template. No chat template is added automatically.",
   method: "Choose full-model unlearning, train a new LoRA adapter, or continue from an existing adapter.",
   loraTargets: "Transformer modules updated by LoRA. The backend advertises additional supported modules when available.",
   unlearningMethod: "The optimization objective used to remove targeted knowledge.",

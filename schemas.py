@@ -135,6 +135,8 @@ class LoraTargetModule(str, Enum):
 
 
 class GeneralHyperParams(BaseModel):
+    gamma: float = Field(1.0, ge=0, allow_inf_nan=False)
+    alpha: float = Field(1.0, ge=0, allow_inf_nan=False)
     max_steps: Optional[int] = Field(None, ge=1)
     epochs: Optional[int] = Field(None, ge=1)
     learning_rate: Union[float, str]

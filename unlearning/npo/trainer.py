@@ -8,6 +8,8 @@ from unlearning.npo.losses import compute_forget_loss
 
 
 class NPOTrainer(GradDiffTrainer):
+    requires_single_device = True
+
     def __init__(self, beta=0.1, **hf_trainer_kwargs):
         super().__init__(**hf_trainer_kwargs)
         self.beta = beta
@@ -26,4 +28,18 @@ class NPOTrainer(GradDiffTrainer):
         retain_loss = self.compute_retain_loss(model, to_model_inputs(retain_inputs))
 
         loss = self.gamma * forget_loss + self.alpha * retain_loss
+        return (loss, forget_outputs) if return_outputs else loss
+
+
+class NPOForgetOnlyTrainer(NPOTrainer):
+    """Reference-based NPO loss without retain regularization."""
+
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        forget_loss, forget_outputs = compute_forget_loss(
+            model=model,
+            ref_model=self.ref_model,
+            forget_inputs=inputs,
+            beta=self.beta,
+        )
+        loss = self.gamma * forget_loss
         return (loss, forget_outputs) if return_outputs else loss

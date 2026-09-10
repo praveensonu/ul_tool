@@ -66,7 +66,7 @@ export default function RunningStage() {
     if (retainFile) formData.append("retain_set", retainFile);
     formData.append(
       "prompt_template",
-      buildPromptTemplate(project.data.promptTemplate, project.model.modelName)
+      buildPromptTemplate(project.data.promptTemplate)
     );
     const response = await uploadDatasets(formData);
     setDatasetUpload(response, null);

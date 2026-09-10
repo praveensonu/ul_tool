@@ -40,6 +40,15 @@ class GpuSelectionTests(unittest.TestCase):
             self.assertEqual(outcome.result, {"visible": "6,2"})
             self.assertEqual(os.environ["CUDA_VISIBLE_DEVICES"], "7")
 
+    def test_reference_training_worker_selects_first_gpu_before_runner(self):
+        for method in ("dpo", "npo"):
+            with self.subTest(method=method), patch.dict(os.environ, {"CUDA_VISIBLE_DEVICES": "7"}):
+                outcome = TrainingProcessManager(runner=report_visible_gpus).run({
+                    "gpu": {"gpu_ids": [6, 2]}, "unlearning": {"method": method}
+                })
+                self.assertEqual(outcome.result, {"visible": "6"})
+                self.assertEqual(os.environ["CUDA_VISIBLE_DEVICES"], "7")
+
     def test_evaluation_worker_keeps_generation_selection(self):
         outcome = EvaluationProcessManager(runner=report_visible_gpus).run({"orchestrator_config": {"gpu": {"gpu_ids": [6, 2]}}})
         self.assertEqual(outcome, {"visible": "6,2"})

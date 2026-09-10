@@ -9,7 +9,7 @@ import traceback
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Literal, Optional
 
-from orchestrator import run_orchestrator
+from orchestrator import configure_training_devices, run_orchestrator
 
 
 class TrainingAlreadyRunningError(RuntimeError):
@@ -33,8 +33,7 @@ def _training_worker(
 ) -> None:
     try:
         if "gpu" in api_config:
-            from gpu.gpu_utils import selected_gpu_ids, set_cuda_visible_devices
-            set_cuda_visible_devices(selected_gpu_ids(api_config["gpu"]))
+            configure_training_devices(api_config)
         result_queue.put({"status": "success", "result": runner(api_config)})
     except Exception as exc:
         traceback.print_exc()

@@ -6,39 +6,13 @@ import type {
   UnlearningMethodInfo
 } from "./types";
 
-export const defaultTemplate = `<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+export const defaultTemplate = "{question}";
 
-Cutting Knowledge Date: December 2023
-Today Date: 26 July 2024
-
-<|eot_id|><|start_header_id|>user<|end_header_id|>
-
-{question}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-`;
-
-const promptTemplates = {
-  llama: defaultTemplate,
-  mistral: `<s>[INST] {question} [/INST]`,
-  gemma: `<bos><start_of_turn>user\n{question}<end_of_turn>\n<start_of_turn>model\n`,
-  qwen: `<|im_start|>user\n{question}<|im_end|>\n<|im_start|>assistant\n`,
-  phi: `<|user|>\n{question}<|end|>\n<|assistant|>\n`,
-  fallback: `{question}`
-} as const;
-
-export function promptFamily(modelName: string) {
-  const model = modelName.toLowerCase();
-  if (model.includes("mistral") || model.includes("mixtral")) return "Mistral";
-  if (model.includes("gemma")) return "Gemma";
-  if (model.includes("qwen")) return "Qwen";
-  if (model.includes("phi")) return "Phi";
-  if (model.includes("llama")) return "Llama";
-  return "Generic";
-}
-
-export function buildPromptTemplate(userPrompt: string, modelName = "") {
-  const promptWithDatasetQuestion = `${userPrompt.trim()}\n\n{question}`;
-  const family = promptFamily(modelName).toLowerCase() as keyof typeof promptTemplates;
-  return (promptTemplates[family] ?? promptTemplates.fallback).replace("{question}", promptWithDatasetQuestion);
+export function buildPromptTemplate(userPrompt: string) {
+  if (!userPrompt.includes("{question}")) {
+    throw new Error("Prompt template must contain {question}.");
+  }
+  return userPrompt;
 }
 
 export const defaultLoraTargets = ["q_proj", "v_proj", "k_proj", "o_proj"];
@@ -46,8 +20,8 @@ export const defaultLoraTargets = ["q_proj", "v_proj", "k_proj", "o_proj"];
 export const fallbackUnlearningMethods: UnlearningMethodInfo[] = [
   { value: "grad_ascent", label: "Gradient Ascent", requires_retain: false },
   { value: "grad_diff", label: "Gradient Difference", requires_retain: true },
-  { value: "npo", label: "NPO", requires_retain: true },
-  { value: "dpo", label: "DPO", requires_retain: true },
+  { value: "npo", label: "NPO", requires_retain: false },
+  { value: "dpo", label: "DPO", requires_retain: false },
   { value: "simnpo", label: "SimNPO", requires_retain: false }
 ];
 
@@ -103,7 +77,7 @@ export function createDefaultProject(name = "Unnamed project"): Project {
       extractionResponse: null,
       preparedForgetFile: null,
       preparedRetainFile: null,
-      promptTemplate: "",
+      promptTemplate: defaultTemplate,
       previewRows: [],
       selectedPreviewKeys: [],
       previewReady: false,
@@ -128,6 +102,8 @@ export function createDefaultProject(name = "Unnamed project"): Project {
       contextLength: 2048,
       batchSize: 1,
       gradAccum: 8,
+      forgettingStrength: "1.0",
+      retentionStrength: "1.0",
       weightDecay: 0.01,
       saveSteps: 10
     },
@@ -200,10 +176,9 @@ export function normalizeProject(value: unknown): Project {
       ...rawData,
       sourceMode: rawData.sourceMode === "extract" ? "extract" : "upload",
       promptTemplate:
-        typeof rawData.promptTemplate === "string" &&
-        !rawData.promptTemplate.includes("{question}")
+        typeof rawData.promptTemplate === "string"
           ? rawData.promptTemplate
-          : "",
+          : defaultTemplate,
       previewRows: Array.isArray(rawData.previewRows) ? rawData.previewRows : [],
       selectedPreviewKeys: Array.isArray(rawData.selectedPreviewKeys) ? rawData.selectedPreviewKeys : []
     },

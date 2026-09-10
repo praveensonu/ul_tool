@@ -115,8 +115,8 @@ class ForgetRetainDataset(Dataset):
         return (forget_data, retain_data)
 
 
-class IdkForgetRetainDataset(ForgetRetainDataset):
-    """Forget/retain pairs where each forget sample also carries a preferred answer.
+class IdkForgetOnlyDataset(ForgetOnlyDataset):
+    """Forget samples paired with a preferred answer, without a retain set.
 
     The preferred ("alternate") answer comes from an `alternate` column when the forget
     data has one, otherwise a random line of idk.jsonl is sampled per access.
@@ -125,28 +125,46 @@ class IdkForgetRetainDataset(ForgetRetainDataset):
     def __init__(self, *args, idk_path=None, alternate_key="alternate", **kwargs):
         super().__init__(*args, **kwargs)
         self.alternate_key = (
-            alternate_key if alternate_key in self.forget.columns else None
+            alternate_key if alternate_key in self.data.columns else None
         )
         path = Path(idk_path) if idk_path else IDK_PATH
-        self.idk_responses = [
-            line.strip() for line in path.read_text().splitlines() if line.strip()
-        ]
+        self.idk_responses = (
+            [line.strip() for line in path.read_text().splitlines() if line.strip()]
+            if self.alternate_key is None else []
+        )
         if self.alternate_key is None and not self.idk_responses:
             raise ValueError(f"No alternate answers available: {path} is empty.")
 
     def _alternate_answer(self, idx):
         if self.alternate_key is not None:
-            return self.forget.iloc[idx][self.alternate_key]
+            return self.data.iloc[idx][self.alternate_key]
         pos = torch.randint(0, len(self.idk_responses), (1,)).item()
         return self.idk_responses[pos]
 
     def __getitem__(self, idx):
-        forget_data, retain_data = super().__getitem__(idx)
+        forget_data = super().__getitem__(idx)
 
         alternate_data = convert_raw_data_to_model_qa(
             self.tokenizer, self.max_length,
-            self.forget.iloc[idx][self.qk],
+            self.data.iloc[idx][self.qk],
             self._alternate_answer(idx),
         )
 
-        return (forget_data, alternate_data, retain_data)
+        return (forget_data, alternate_data)
+
+
+class IdkForgetRetainDataset(IdkForgetOnlyDataset):
+    """DPO preference pairs with an independently sampled retain example."""
+
+    def __init__(self, forget_data, retain_data, tokenizer, max_length,
+                 question_key="question", answer_key="answer", **kwargs):
+        super().__init__(forget_data, tokenizer, max_length,
+                         question_key, answer_key, **kwargs)
+        self.retain_dataset = ForgetOnlyDataset(
+            retain_data, tokenizer, max_length, question_key, answer_key
+        )
+
+    def __getitem__(self, idx):
+        forget_data, alternate_data = super().__getitem__(idx)
+        retain_idx = torch.randint(0, len(self.retain_dataset), (1,)).item()
+        return forget_data, alternate_data, self.retain_dataset[retain_idx]

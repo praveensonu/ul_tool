@@ -22,6 +22,8 @@ def build_orchestrator_config(request: FinalTrainingConfigRequest) -> dict:
         },
         "hyperparams": {
             "general": {
+                "gamma": request.hyperparams.general.gamma,
+                "alpha": request.hyperparams.general.alpha,
                 "max_steps": request.hyperparams.general.max_steps,
                 "epochs": request.hyperparams.general.epochs,
                 "learning_rate": request.hyperparams.general.learning_rate,

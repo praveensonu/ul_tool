@@ -16,8 +16,10 @@ class UnlearnTrainer(Trainer):
     language-modelling batch rather than a forget/retain structure.
     """
 
-    def __init__(self, **hf_trainer_kwargs):
+    def __init__(self, gamma=1.0, alpha=1.0, **hf_trainer_kwargs):
         super().__init__(**hf_trainer_kwargs)
+        self.gamma = gamma
+        self.alpha = alpha
         self.model_accepts_loss_kwargs = False
 
     def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):

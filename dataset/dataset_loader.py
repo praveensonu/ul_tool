@@ -46,6 +46,7 @@ def validate_qa_columns(df: pd.DataFrame, dataset_name: str):
 
 
 def apply_prompt_template(df: pd.DataFrame, prompt_template: str) -> pd.DataFrame:
+    """Substitute questions verbatim, keeping answers separate for continuation."""
     if "{question}" not in prompt_template:
         raise ValueError("prompt_template must contain {question}")
 
@@ -54,7 +55,7 @@ def apply_prompt_template(df: pd.DataFrame, prompt_template: str) -> pd.DataFram
     df["answer"] = df["answer"].astype(str)
 
     df["question"] = df["question"].apply(
-        lambda q: prompt_template.format(question=q)
+        lambda q: prompt_template.replace("{question}", q)
     )
 
     return df

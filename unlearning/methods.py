@@ -4,7 +4,7 @@ The single source of truth for which methods exist, what each one needs from the
 dataset, and the hyperparameters it runs with. The API schemas, the orchestrator and
 the frontend all derive from this, so a new method is added here only. Trainer
 arguments are open-unlearning's `configs/trainer/*.yaml` and are not user-configurable
-yet.
+yet, apart from the shared gamma/alpha strengths supplied by the user.
 
 Kept dependency-free so both the API process and the training subprocess can import it
 cheaply.
@@ -31,20 +31,20 @@ UNLEARNING_METHODS: Dict[str, UnlearningMethodSpec] = {
     ),
     "grad_diff": UnlearningMethodSpec(
         label="Gradient Difference",
-        trainer_args={"gamma": 1.0, "alpha": 1.0, "retain_loss_type": "NLL"},
+        trainer_args={"retain_loss_type": "NLL"},
         requires_retain=True,
         forget_only=False,
     ),
     "npo": UnlearningMethodSpec(
         label="NPO",
-        trainer_args={"beta": 0.1, "gamma": 1.0, "alpha": 1.0, "retain_loss_type": "NLL"},
-        requires_retain=True,
+        trainer_args={"beta": 0.1, "retain_loss_type": "NLL"},
+        requires_retain=False,
         forget_only=False,
     ),
     "dpo": UnlearningMethodSpec(
         label="DPO",
-        trainer_args={"beta": 0.1, "gamma": 1.0, "alpha": 1.0, "retain_loss_type": "NLL"},
-        requires_retain=True,
+        trainer_args={"beta": 0.1, "retain_loss_type": "NLL"},
+        requires_retain=False,
         forget_only=False,
     ),
     "simnpo": UnlearningMethodSpec(
@@ -52,8 +52,6 @@ UNLEARNING_METHODS: Dict[str, UnlearningMethodSpec] = {
         trainer_args={
             "beta": 4.5,
             "delta": 0.0,
-            "gamma": 0.125,
-            "alpha": 1.0,
             "retain_loss_type": "NLL",
         },
         requires_retain=False,

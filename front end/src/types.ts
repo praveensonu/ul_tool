@@ -95,6 +95,8 @@ export type Hyperparams = {
     max_steps: number | null;
     epochs: number | null;
     learning_rate: string;
+    gamma: number;
+    alpha: number;
     context_length: number;
   };
   optimization: {
@@ -289,6 +291,8 @@ export type ProjectHyperparametersConfig = {
   contextLength: number;
   batchSize: number;
   gradAccum: number;
+  forgettingStrength: string;
+  retentionStrength: string;
   weightDecay: number;
   saveSteps: number;
 };

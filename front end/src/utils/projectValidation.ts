@@ -61,6 +61,9 @@ export function isHyperparametersValid(project: Project) {
     h.batchSize > 0 &&
     h.gradAccum > 0 &&
     h.saveSteps > 0 &&
+    [h.forgettingStrength, h.retentionStrength].every(
+      (value) => value.trim() !== "" && Number.isFinite(Number(value)) && Number(value) >= 0
+    ) &&
     h.weightDecay >= 0
   );
 }

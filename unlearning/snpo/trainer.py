@@ -9,11 +9,10 @@ from unlearning.snpo.losses import compute_forget_loss
 
 
 class SimNPOForgetOnlyTrainer(UnlearnTrainer):
-    def __init__(self, delta=0.0, beta=4.5, gamma=0.125, **hf_trainer_kwargs):
+    def __init__(self, delta=0.0, beta=4.5, **hf_trainer_kwargs):
         super().__init__(**hf_trainer_kwargs)
         self.delta = delta
         self.beta = beta
-        self.gamma = gamma
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         forget_inputs = {

@@ -81,3 +81,8 @@ def DpoRetainCollator(samples): # for dpo: forget, alternate (preferred) and ret
         attention_mask = [s[2] for s in data]
         rets.append((torch.stack(input_ids), torch.stack(labels), torch.stack(attention_mask)))
     return rets
+
+
+def DpoForgetCollator(samples):
+    """Batch (forget, preferred) pairs without a retain batch."""
+    return RetainCollator(samples)
