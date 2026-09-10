@@ -242,6 +242,7 @@ export type ProjectDataConfig = {
   fullFile: File | null;
   poisonFile: File | null;
   extractionModelName: string;
+  extractionHfKey: string;
   extractionMaxLength: number;
   gradientBatchSize: number;
   extractionAdaptorPath: string;
@@ -321,6 +322,8 @@ export type Project = {
   updatedAt: string;
   lastStage: ProjectStage;
   completedStages: CompletedStages;
+  setupComplete: boolean;
+  pendingResetFrom: ProjectStage | null;
   data: ProjectDataConfig;
   model: ProjectModelConfig;
   hyperparameters: ProjectHyperparametersConfig;

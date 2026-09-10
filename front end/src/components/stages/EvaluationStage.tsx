@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Loader2, Play, Square } from "lucide-react";
-import { cancelEvaluation, getEvaluationStatus, startEvaluation } from "../../api";
+import { cancelEvaluation, getEvaluationStatus, startEvaluation, validateSentenceTransformerModel } from "../../api";
 import type { EvaluationJobStatus, EvaluationRequest } from "../../types";
 import { useProject } from "../../state/ProjectContext";
 import EvaluationDashboard from "../evaluation/EvaluationDashboard";
+import JobProgress from "../ui/JobProgress";
+import { FieldLabel, fieldHelp } from "../ui/HelpTip";
 
 export default function EvaluationStage() {
   const { project, updateRun, markStageCompleted } = useProject();
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [embeddingValidation, setEmbeddingValidation] = useState<"idle" | "checking" | "valid">("idle");
   const training = project.run.training;
   const job = project.run.evaluationJob;
   const isRunning = job?.status === "queued" || job?.status === "running" || job?.status === "cancelling";
@@ -58,14 +61,37 @@ export default function EvaluationStage() {
     };
   }, [activeJobId]);
 
+  async function checkEmbeddingModel() {
+    const embeddingModelName = project.run.embeddingModelName.trim();
+    if (!embeddingModelName) {
+      setEmbeddingValidation("idle");
+      throw new Error("The sentence-transformers model is mandatory.");
+    }
+
+    setEmbeddingValidation("checking");
+    try {
+      await validateSentenceTransformerModel(embeddingModelName, project.model.hfKey);
+      setEmbeddingValidation("valid");
+      return embeddingModelName;
+    } catch (validationError) {
+      setEmbeddingValidation("idle");
+      throw validationError;
+    }
+  }
+
+  async function handleEmbeddingBlur() {
+    if (!project.run.embeddingModelName.trim() || isRunning) return;
+    try {
+      await checkEmbeddingModel();
+      setError(null);
+    } catch (validationError) {
+      setError(validationError instanceof Error ? validationError.message : "The sentence-transformers model is invalid.");
+    }
+  }
+
   async function handleStart() {
     if (!training || training.status !== "success") {
       setError("Complete unlearning before starting evaluation.");
-      return;
-    }
-    const embeddingModelName = project.run.embeddingModelName.trim();
-    if (!embeddingModelName) {
-      setError("Enter a sentence-transformers model name or local path.");
       return;
     }
     if (!hasRetainSet) {
@@ -74,6 +100,13 @@ export default function EvaluationStage() {
     }
 
     setError(null);
+    let embeddingModelName: string;
+    try {
+      embeddingModelName = await checkEmbeddingModel();
+    } catch (validationError) {
+      setError(validationError instanceof Error ? validationError.message : "The sentence-transformers model is invalid.");
+      return;
+    }
     markStageCompleted("evaluation", false);
     const request: EvaluationRequest = {
       orchestrator_config: training.orchestrator_config,
@@ -151,30 +184,39 @@ export default function EvaluationStage() {
 
       {result?.output_files.results_jsonl_path && <p>Results saved to <code>{result.output_files.results_jsonl_path}</code></p>}
       <section className="evaluation-config-card">
-        <label>
+        <label className="checkbox-field">
           <input type="checkbox" checked={project.run.includeBenchmarks} disabled={isRunning}
             onChange={(event) => updateRun({ includeBenchmarks: event.target.checked })} />
-          {" "}Include benchmark evaluation (MMLU and GPQA)
+          <FieldLabel help={fieldHelp.benchmarks}>Include benchmark evaluation (MMLU and GPQA)</FieldLabel>
         </label>
         <label className="field">
-          Evaluation batch size
+          <FieldLabel help={fieldHelp.evaluationBatch}>Evaluation batch size</FieldLabel>
           <input type="number" min={1} disabled={isRunning} value={project.run.evaluationBatchSize}
             onChange={(event) => updateRun({ evaluationBatchSize: Math.max(1, Math.floor(Number(event.target.value) || 1)) })} />
           <small>Used for generation, conditional probability, and perplexity. Reduce it if GPU memory is limited.</small>
         </label>
         <div className="field-grid two">
           <label className="field">
-            Sentence-transformers model
+            <FieldLabel help={fieldHelp.embeddingModel}>Sentence-transformers model <em className="required-mark">required</em></FieldLabel>
             <input
+              required
+              aria-required="true"
+              aria-invalid={Boolean(error) && embeddingValidation !== "valid"}
               value={project.run.embeddingModelName}
               disabled={isRunning}
-              placeholder="Repository name or local model path"
-              onChange={(event) => updateRun({ embeddingModelName: event.target.value })}
+              placeholder="e.g. sentence-transformers/all-MiniLM-L6-v2"
+              onBlur={handleEmbeddingBlur}
+              onChange={(event) => {
+                setEmbeddingValidation("idle");
+                updateRun({ embeddingModelName: event.target.value });
+              }}
             />
-            <small>Loaded only after both language models have been removed from memory.</small>
+            <small>Verified on Hugging Face before evaluation starts; loaded after both language models leave memory.</small>
+            {embeddingValidation === "checking" && <span className="field-validation checking"><Loader2 className="spin" size={14} />Checking model…</span>}
+            {embeddingValidation === "valid" && <span className="field-validation valid"><CheckCircle2 size={14} />Model verified</span>}
           </label>
           <label className="field">
-            Maximum generated tokens
+            <FieldLabel help={fieldHelp.maxTokens}>Maximum generated tokens</FieldLabel>
             <input
               type="number"
               min={1}
@@ -199,35 +241,15 @@ export default function EvaluationStage() {
               {job?.status === "cancelling" ? "Cancelling" : "Cancel evaluation"}
             </button>
           ) : (
-            <button className="primary-button" type="button" onClick={handleStart} disabled={!hasRetainSet}>
-              <Play size={17} />
-              {result ? "Run evaluation again" : "Start evaluation"}
+            <button className="primary-button" type="button" onClick={handleStart} disabled={!hasRetainSet || !project.run.embeddingModelName.trim() || embeddingValidation === "checking"}>
+              {embeddingValidation === "checking" ? <Loader2 className="spin" size={17} /> : <Play size={17} />}
+              {embeddingValidation === "checking" ? "Checking model" : result ? "Run evaluation again" : "Start evaluation"}
             </button>
           )}
         </div>
       </section>
 
-      {job && (
-        <section className="evaluation-progress-card" aria-live="polite">
-          <div className="progress-heading">
-            <div>
-              <span className={`status-dot ${job.status}`} />
-              <strong>{job.message}</strong>
-            </div>
-            <span>{job.status}</span>
-          </div>
-          <ol className="progress-timeline">
-            {job.progress.map((event, index) => (
-              <li key={`${event.timestamp}-${index}`} className={index === job.progress.length - 1 ? "current" : "done"}>
-                {index === job.progress.length - 1 && isRunning
-                  ? <Loader2 className="spin" size={15} />
-                  : <CheckCircle2 size={15} />}
-                <div><strong>{event.message}</strong><small>{event.stage.split("_").join(" ")}</small></div>
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
+      {job && <JobProgress title="Model evaluation" status={job.status} message={job.message} progress={job.progress} splitEvaluation />}
 
       {result && <EvaluationDashboard result={result} />}
     </section>

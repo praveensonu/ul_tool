@@ -1,32 +1,163 @@
+import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
+import { AlertTriangle, BarChart3, CheckCircle2, Gauge as GaugeIcon, Minus } from "lucide-react";
 import type { EvaluationResponse } from "../../types";
 
-const PRE_COLOR = "#4f6fb3";
-const POST_COLOR = "#2f8a63";
+const PRE_COLOR = "#62718a";
+const POST_COLOR = "#267a59";
+
+type Direction = "up" | "down" | "stable";
+type Outcome = "good" | "neutral" | "bad";
+type MetricRow = {
+  label: string;
+  pre: number;
+  post: number;
+  direction: Direction;
+};
 
 function formatMetric(value: number) {
   if (!Number.isFinite(value)) return "—";
-  if (Math.abs(value) >= 1000) return value.toExponential(2);
-  return value.toFixed(4);
+  return Math.abs(value) >= 1000 ? value.toExponential(2) : value.toFixed(4);
+}
+
+function outcome(pre: number, post: number, direction: Direction): Outcome {
+  const tolerance = Math.max(Math.abs(pre) * 0.02, 0.002);
+  const delta = post - pre;
+  if (Math.abs(delta) <= tolerance) return direction === "stable" ? "good" : "neutral";
+  if (direction === "stable") return "bad";
+  return (direction === "up" ? delta > 0 : delta < 0) ? "good" : "bad";
+}
+
+function StatusMark({ state }: { state: Outcome }) {
+  const labels = {
+    good: "Desired",
+    neutral: "Neutral",
+    bad: "Attention",
+  };
+
+  return (
+    <span
+      className={`metric-status ${state}`}
+      title={
+        state === "good"
+          ? "Desired change"
+          : state === "bad"
+            ? "Change needs attention"
+            : "Neutral change"
+      }
+    >
+      {state === "good" ? (
+        <CheckCircle2 size={17} strokeWidth={2.4} />
+      ) : state === "bad" ? (
+        <AlertTriangle size={17} strokeWidth={2.4} />
+      ) : (
+        <Minus size={17} strokeWidth={2.5} />
+      )}
+      <span>{labels[state]}</span>
+    </span>
+  );
+}
+
+function Gauge({
+  value,
+  maximum = 1,
+  color,
+  label,
+}: {
+  value: number;
+  maximum?: number;
+  color: string;
+  label: string;
+}) {
+  const safeMaximum = maximum > 0 ? maximum : 1;
+  const normalized = Math.max(0, Math.min(1, value / safeMaximum));
+  const angle = -90 + normalized * 180;
+
+  return (
+    <div className="gauge-plot">
+      <svg viewBox="0 0 180 105" role="img" aria-label={`${label}: ${formatMetric(value)}`}>
+        <path className="gauge-track" d="M20 90 A70 70 0 0 1 160 90" pathLength="100" />
+        <path
+          className="gauge-fill"
+          style={{
+            stroke: color,
+            "--gauge-offset": String(100 - normalized * 100),
+          } as CSSProperties}
+          d="M20 90 A70 70 0 0 1 160 90"
+          pathLength="100"
+        />
+        <g className="gauge-quartiles">
+          <path d="M90 14v9" />
+          <path d="M40 37l7 7" />
+          <path d="M140 37l-7 7" />
+        </g>
+        <line
+          className="gauge-needle"
+          x1="90"
+          y1="90"
+          x2="90"
+          y2="31"
+          style={{ "--gauge-angle": `${angle}deg` } as CSSProperties}
+        />
+        <circle className="gauge-hub-ring" cx="90" cy="90" r="9" />
+        <circle cx="90" cy="90" r="5.5" fill={color} />
+      </svg>
+      <strong>{formatMetric(value)}</strong>
+      <small>{label}</small>
+    </div>
+  );
+}
+
+function GaugeComparison({
+  title,
+  subtitle,
+  rows,
+  adaptiveScale = false,
+}: {
+  title: string;
+  subtitle: string;
+  rows: MetricRow[];
+  adaptiveScale?: boolean;
+}) {
+  return (
+    <section className="evaluation-chart-card gauge-card">
+      <div className="chart-heading">
+        <div>
+          <h3>{title}</h3>
+          <p>{subtitle}</p>
+        </div>
+      </div>
+
+      {rows.map((row) => {
+        const state = outcome(row.pre, row.post, row.direction);
+        const maximum = adaptiveScale ? Math.max(row.pre, row.post, 0.000001) * 1.12 : 1;
+        return (
+          <div className={`gauge-metric outcome-${state}`} key={row.label}>
+            <div className="gauge-title">
+              <strong>{row.label}</strong>
+              <StatusMark state={state} />
+            </div>
+            <div className="gauge-pair">
+              <Gauge value={row.pre} maximum={maximum} color={PRE_COLOR} label="Pre" />
+              <Gauge value={row.post} maximum={maximum} color={POST_COLOR} label="Post" />
+            </div>
+          </div>
+        );
+      })}
+    </section>
+  );
 }
 
 function ComparisonBars({
   title,
   subtitle,
   rows,
-  fixedMaximum
 }: {
   title: string;
   subtitle: string;
-  rows: Array<{ label: string; pre: number; post: number }>;
-  fixedMaximum?: number;
+  rows: MetricRow[];
 }) {
-  const observedMaximum = Math.max(
-    ...rows.flatMap((row) => [row.pre, row.post]),
-    0.000001
-  );
-  const maximum = fixedMaximum ?? observedMaximum;
-  const width = (value: number) => `${Math.max(0, Math.min(100, (value / maximum) * 100))}%`;
-
+  const maximum = Math.max(...rows.flatMap((row) => [row.pre, row.post]), 0.000001);
   return (
     <section className="evaluation-chart-card">
       <div className="chart-heading">
@@ -34,47 +165,77 @@ function ComparisonBars({
           <h3>{title}</h3>
           <p>{subtitle}</p>
         </div>
-        <div className="chart-legend" aria-label="Chart legend">
-          <span><i style={{ background: PRE_COLOR }} />Pre-unlearning</span>
-          <span><i style={{ background: POST_COLOR }} />Post-unlearning</span>
-        </div>
       </div>
-
       <div className="comparison-bars">
-        {rows.map((row) => (
-          <div className="comparison-row" key={row.label}>
-            <strong>{row.label}</strong>
-            <div className="bar-pair">
-              <div className="bar-track">
-                <span className="metric-bar pre" style={{ width: width(row.pre) }} />
-                <em>{formatMetric(row.pre)}</em>
+        {rows.map((row) => {
+          const state = outcome(row.pre, row.post, row.direction);
+          return (
+            <div className={`comparison-row outcome-${state}`} key={row.label}>
+              <div className="comparison-row-head">
+                <strong>{row.label}</strong>
+                <div className="comparison-row-meta">
+                  <StatusMark state={state} />
+                  <div className="bar-mini-legend" aria-label="Bar legend">
+                    <span><i style={{ background: PRE_COLOR }} />Pre</span>
+                    <span><i style={{ background: POST_COLOR }} />Post</span>
+                  </div>
+                </div>
               </div>
-              <div className="bar-track">
-                <span className="metric-bar post" style={{ width: width(row.post) }} />
-                <em>{formatMetric(row.post)}</em>
+              <div className="bar-pair">
+                <div className="bar-track">
+                  <span className="metric-bar pre" style={{ width: `${Math.max(1, row.pre / maximum * 100)}%` }} />
+                  <em>{formatMetric(row.pre)}</em>
+                </div>
+                <div className="bar-track">
+                  <span className="metric-bar post" style={{ width: `${Math.max(1, row.post / maximum * 100)}%` }} />
+                  <em>{formatMetric(row.post)}</em>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
 }
 
 export default function EvaluationDashboard({ result }: { result: EvaluationResponse }) {
+  const [chartMode, setChartMode] = useState<"gauges" | "bars">(() => {
+    try {
+      return window.localStorage.getItem("ascent-evaluation-chart") === "bars" ? "bars" : "gauges";
+    } catch {
+      return "gauges";
+    }
+  });
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("ascent-evaluation-chart", chartMode);
+    } catch {
+      // The preference remains active for this session when storage is unavailable.
+    }
+  }, [chartMode]);
+
   const pre = result.pre_unlearning;
   const post = result.post_unlearning;
-  const detailRows = [
-    ["Forget quality", pre.forget_quality.score, post.forget_quality.score, "Higher is better"],
-    ["Model utility", pre.model_utility.score, post.model_utility.score, "Higher is better"],
-    ["Forget perplexity", pre.forget_quality.average_perplexity, post.forget_quality.average_perplexity, "Post should increase"],
-    ["Retain perplexity", pre.model_utility.average_perplexity, post.model_utility.average_perplexity, "Lower is better"],
-    ["Forget conditional probability", pre.forget_quality.mean_conditional_probability, post.forget_quality.mean_conditional_probability, "Post should decrease"],
-    ["Retain conditional probability", pre.model_utility.mean_conditional_probability, post.model_utility.mean_conditional_probability, "Higher is better"],
-    ["Forget ROUGE-L", pre.forget_quality.mean_rouge_l, post.forget_quality.mean_rouge_l, "Post should decrease"],
-    ["Retain ROUGE-L", pre.model_utility.mean_rouge_l, post.model_utility.mean_rouge_l, "Higher is better"],
-    ["Retain cosine similarity", pre.model_utility.mean_cosine_similarity, post.model_utility.mean_cosine_similarity, "Higher is better"]
-  ] as const;
+  const overall: MetricRow[] = [
+    { label: "Forget quality", pre: pre.forget_quality.score, post: post.forget_quality.score, direction: "up" },
+    { label: "Model utility", pre: pre.model_utility.score, post: post.model_utility.score, direction: "up" },
+  ];
+  const perplexity: MetricRow[] = [
+    { label: "Forget set", pre: pre.forget_quality.average_perplexity, post: post.forget_quality.average_perplexity, direction: "up" },
+    { label: "Retain set", pre: pre.model_utility.average_perplexity, post: post.model_utility.average_perplexity, direction: "down" },
+  ];
+  const forget: MetricRow[] = [
+    { label: "Conditional probability", pre: pre.forget_quality.mean_conditional_probability, post: post.forget_quality.mean_conditional_probability, direction: "down" },
+    { label: "ROUGE-L", pre: pre.forget_quality.mean_rouge_l, post: post.forget_quality.mean_rouge_l, direction: "down" },
+  ];
+  const retain: MetricRow[] = [
+    { label: "Conditional probability", pre: pre.model_utility.mean_conditional_probability, post: post.model_utility.mean_conditional_probability, direction: "up" },
+    { label: "ROUGE-L", pre: pre.model_utility.mean_rouge_l, post: post.model_utility.mean_rouge_l, direction: "up" },
+    { label: "Cosine similarity", pre: pre.model_utility.mean_cosine_similarity, post: post.model_utility.mean_cosine_similarity, direction: "up" },
+  ];
+  const details = [...overall, ...perplexity, ...forget, ...retain];
 
   return (
     <div className="evaluation-dashboard">
@@ -82,102 +243,87 @@ export default function EvaluationDashboard({ result }: { result: EvaluationResp
         <div>
           <span className="eyebrow">Comparison dashboard</span>
           <h2>Before and after unlearning</h2>
-          <p>Blue represents the original model; green represents the unlearnt model.</p>
+          <p>Green marks a desired change, amber a neutral result, and red a result requiring attention.</p>
         </div>
-        <div className="embedding-pill">Embeddings: {result.embedding_model_name}</div>
+        <div className="dashboard-tools">
+          <div className="chart-mode-toggle" role="group" aria-label="Evaluation chart style">
+            <button type="button" className={chartMode === "gauges" ? "active" : ""} aria-pressed={chartMode === "gauges"} onClick={() => setChartMode("gauges")}>
+              <GaugeIcon size={15} /> Gauges
+            </button>
+            <button type="button" className={chartMode === "bars" ? "active" : ""} aria-pressed={chartMode === "bars"} onClick={() => setChartMode("bars")}>
+              <BarChart3 size={15} /> Bars
+            </button>
+          </div>
+          <div className="embedding-pill">Embeddings: {result.embedding_model_name}</div>
+        </div>
       </div>
 
-      <section className="score-card-grid">
-        <article className="score-card forget">
-          <span>Post-unlearning forget quality</span>
-          <strong>{formatMetric(post.forget_quality.score)}</strong>
-          <small>Pre-unlearning {formatMetric(pre.forget_quality.score)}</small>
-        </article>
-        <article className="score-card utility">
-          <span>Post-unlearning model utility</span>
-          <strong>{formatMetric(post.model_utility.score)}</strong>
-          <small>Pre-unlearning {formatMetric(pre.model_utility.score)}</small>
-        </article>
-        <article className="score-card neutral">
-          <span>Forget-set perplexity</span>
-          <strong>{formatMetric(post.forget_quality.average_perplexity)}</strong>
-          <small>Pre-unlearning {formatMetric(pre.forget_quality.average_perplexity)}</small>
-        </article>
-        <article className="score-card neutral">
-          <span>Retain-set perplexity</span>
-          <strong>{formatMetric(post.model_utility.average_perplexity)}</strong>
-          <small>Pre-unlearning {formatMetric(pre.model_utility.average_perplexity)}</small>
-        </article>
+      <section className="primary-results">
+        <span className="section-priority">Primary outcomes</span>
+        <div className="dashboard-chart-grid">
+          {chartMode === "gauges" ? (
+            <>
+              <GaugeComparison title="Overall scores" subtitle="Core balance between forgetting and retained utility." rows={overall} />
+              <GaugeComparison title="Perplexity" subtitle="Forget perplexity should rise; retain perplexity should stay controlled." rows={perplexity} adaptiveScale />
+            </>
+          ) : (
+            <>
+              <ComparisonBars title="Overall scores" subtitle="Core balance between forgetting and retained utility." rows={overall} />
+              <ComparisonBars title="Perplexity" subtitle="Forget perplexity should rise; retain perplexity should stay controlled." rows={perplexity} />
+            </>
+          )}
+        </div>
       </section>
 
-      <div className="dashboard-chart-grid">
-        <ComparisonBars
-          title="Overall scores"
-          subtitle="Harmonic means on a 0–1 scale."
-          fixedMaximum={1}
-          rows={[
-            { label: "Forget quality", pre: pre.forget_quality.score, post: post.forget_quality.score },
-            { label: "Model utility", pre: pre.model_utility.score, post: post.model_utility.score }
-          ]}
-        />
-        <ComparisonBars
-          title="Perplexity by dataset"
-          subtitle="Forget perplexity should rise while retain perplexity should remain controlled."
-          rows={[
-            { label: "Forget set", pre: pre.forget_quality.average_perplexity, post: post.forget_quality.average_perplexity },
-            { label: "Retain set", pre: pre.model_utility.average_perplexity, post: post.model_utility.average_perplexity }
-          ]}
-        />
-        <ComparisonBars
-          title="Forget-set metrics"
-          subtitle="Lower probability and ROUGE-L after unlearning indicate stronger forgetting."
-          fixedMaximum={1}
-          rows={[
-            { label: "Conditional probability", pre: pre.forget_quality.mean_conditional_probability, post: post.forget_quality.mean_conditional_probability },
-            { label: "ROUGE-L", pre: pre.forget_quality.mean_rouge_l, post: post.forget_quality.mean_rouge_l }
-          ]}
-        />
-        <ComparisonBars
-          title="Retain-set metrics"
-          subtitle="Higher values indicate better preservation of retained knowledge."
-          fixedMaximum={1}
-          rows={[
-            { label: "Conditional probability", pre: pre.model_utility.mean_conditional_probability, post: post.model_utility.mean_conditional_probability },
-            { label: "ROUGE-L", pre: pre.model_utility.mean_rouge_l, post: post.model_utility.mean_rouge_l },
-            { label: "Cosine similarity", pre: pre.model_utility.mean_cosine_similarity, post: post.model_utility.mean_cosine_similarity }
-          ]}
-        />
-      </div>
+      <section className="secondary-results">
+        <span className="section-priority secondary">Diagnostic outcomes</span>
+        <div className="dashboard-chart-grid">
+          {chartMode === "gauges" ? (
+            <>
+              <GaugeComparison title="Forget-set diagnostics" subtitle="Lower post-unlearning values indicate stronger forgetting." rows={forget} />
+              <GaugeComparison title="Retain-set diagnostics" subtitle="Higher post-unlearning values indicate better preservation." rows={retain} />
+            </>
+          ) : (
+            <>
+              <ComparisonBars title="Forget-set diagnostics" subtitle="Lower post-unlearning values indicate stronger forgetting." rows={forget} />
+              <ComparisonBars title="Retain-set diagnostics" subtitle="Higher post-unlearning values indicate better preservation." rows={retain} />
+            </>
+          )}
+        </div>
+      </section>
 
       {pre.benchmarks && post.benchmarks && (
         <ComparisonBars
           title="Benchmark accuracy"
-          subtitle="Global MMLU (5-shot) and GPQA Main (0-shot) accuracy on a 0–1 scale."
-          fixedMaximum={1}
+          subtitle="General capability after unlearning."
           rows={[
-            { label: "MMLU", pre: pre.benchmarks.mmlu, post: post.benchmarks.mmlu },
-            { label: "GPQA", pre: pre.benchmarks.gpqa, post: post.benchmarks.gpqa }
+            { label: "MMLU", pre: pre.benchmarks.mmlu, post: post.benchmarks.mmlu, direction: "stable" },
+            { label: "GPQA", pre: pre.benchmarks.gpqa, post: post.benchmarks.gpqa, direction: "stable" },
           ]}
         />
       )}
-      <section className="metric-table-card">
-        <h3>Detailed comparison</h3>
+
+      <details className="metric-table-card">
+        <summary>Detailed numerical comparison</summary>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Metric</th><th>Pre-unlearning</th><th>Post-unlearning</th><th>Interpretation</th></tr></thead>
+            <thead><tr><th>Metric</th><th>Pre</th><th>Post</th><th>Signal</th></tr></thead>
             <tbody>
-              {detailRows.map(([label, preValue, postValue, interpretation]) => (
-                <tr key={label}>
-                  <th>{label}</th>
-                  <td className="pre-value">{formatMetric(preValue)}</td>
-                  <td className="post-value">{formatMetric(postValue)}</td>
-                  <td>{interpretation}</td>
-                </tr>
-              ))}
+              {details.map((row, index) => {
+                const state = outcome(row.pre, row.post, row.direction);
+                return (
+                  <tr className={`outcome-${state}`} key={`${row.label}-${index}`}>
+                    <th>{row.label}</th>
+                    <td className="pre-value">{formatMetric(row.pre)}</td>
+                    <td className="post-value">{formatMetric(row.post)}</td>
+                    <td><StatusMark state={state} /></td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-      </section>
+      </details>
     </div>
   );
 }

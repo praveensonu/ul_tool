@@ -33,6 +33,11 @@ const emptyRun: ProjectRunState = {
   evaluationMessage: null
 };
 
+const stageRank: ProjectStage[] = ["gpu", "data", "model", "hyperparameters", "running", "evaluation"];
+function earliestStage(current: ProjectStage | null, next: ProjectStage) {
+  return !current || stageRank.indexOf(next) < stageRank.indexOf(current) ? next : current;
+}
+
 type ProjectContextValue = {
   project: Project;
   renameProject: (name: string) => void;
@@ -48,6 +53,8 @@ type ProjectContextValue = {
   markStageCompleted: (stage: ProjectStage, completed?: boolean) => void;
   setLastStage: (stage: ProjectStage) => void;
   saveNow: () => Promise<void>;
+  finishSetup: (sourceMode: ProjectDataConfig["sourceMode"]) => void;
+  resetPipeline: () => void;
 };
 
 const ProjectContext = createContext<ProjectContextValue | null>(null);
@@ -82,32 +89,20 @@ export function ProjectProvider({
     () => ({
       project,
       renameProject: (name) => commit((current) => ({ ...current, name })),
+      finishSetup: (sourceMode) => commit((current) => ({
+        ...current,
+        setupComplete: true,
+        data: { ...current.data, sourceMode }
+      })),
       updateDataInput: (patch) =>
         commit((current) => ({
           ...current,
           data: {
             ...current.data,
-            ...patch,
-            preparedForgetFile: null,
-            preparedRetainFile: null,
-            previewRows: [],
-            selectedPreviewKeys: [],
-            previewReady: false,
-            previewFilterable: true,
-            uploadResponse: null,
-            extractionJob: null,
-            extractionResponse: null,
-            backendUploadError: null
+            ...patch
           },
-          completedStages: {
-            gpu: current.completedStages.gpu,
-            data: false,
-            model: false,
-            hyperparameters: false,
-            running: false,
-            evaluation: false
-          },
-          run: emptyRun
+          pendingResetFrom: current.data.previewReady || current.data.uploadResponse || current.completedStages.data
+            ? earliestStage(current.pendingResetFrom, "data") : current.pendingResetFrom
         })),
       setDataPrepared: (patch) =>
         commit((current) => ({
@@ -123,19 +118,9 @@ export function ProjectProvider({
           data: {
             ...current.data,
             selectedPreviewKeys: keys,
-            preparedForgetFile: null,
-            uploadResponse: null,
-            backendUploadError: null
+            ...(current.completedStages.data ? {} : { preparedForgetFile: null, uploadResponse: null, backendUploadError: null })
           },
-          completedStages: {
-            gpu: current.completedStages.gpu,
-            data: false,
-            model: false,
-            hyperparameters: false,
-            running: false,
-            evaluation: false
-          },
-          run: emptyRun
+          pendingResetFrom: current.completedStages.data ? earliestStage(current.pendingResetFrom, "data") : current.pendingResetFrom
         })),
       setDatasetUpload: (response, error = null) =>
         commit((current) => ({
@@ -168,30 +153,17 @@ export function ProjectProvider({
         commit((current) => ({
           ...current,
           model: { ...current.model, ...patch },
-          data: patch.gpuIds && current.data.sourceMode === "extract"
-            ? { ...current.data, extractionResponse: null, extractionJob: null, uploadResponse: null }
-            : current.data,
-          completedStages: {
-            ...current.completedStages,
-            ...(patch.gpuIds ? { gpu: false, data: false } : {}),
-            model: false,
-            hyperparameters: false,
-            running: false,
-            evaluation: false
-          },
-          run: emptyRun
+          pendingResetFrom: current.completedStages.model || current.completedStages.running || (Boolean(patch.gpuIds) && current.completedStages.data)
+            ? earliestStage(current.pendingResetFrom, patch.gpuIds ? "gpu" : (patch.modelName && current.completedStages.data ? "data" : "model"))
+            : current.pendingResetFrom
         })),
       updateHyperparameters: (patch) =>
         commit((current) => ({
           ...current,
           hyperparameters: { ...current.hyperparameters, ...patch },
-          completedStages: {
-            ...current.completedStages,
-            hyperparameters: false,
-            running: false,
-            evaluation: false
-          },
-          run: emptyRun
+          pendingResetFrom: current.completedStages.hyperparameters || current.completedStages.running
+            ? earliestStage(current.pendingResetFrom, "hyperparameters")
+            : current.pendingResetFrom
         })),
       updateRun: (patch) =>
         commit((current) => ({
@@ -211,6 +183,35 @@ export function ProjectProvider({
           ...current,
           lastStage: stage
         })),
+      resetPipeline: () => commit((current) => {
+        const from = current.pendingResetFrom;
+        if (!from) return current;
+        const order: ProjectStage[] = ["gpu", "data", "model", "hyperparameters", "running", "evaluation"];
+        const start = order.indexOf(from);
+        const completedStages = { ...current.completedStages };
+        order.slice(start).forEach((stage) => { completedStages[stage] = false; });
+        const resetData = start <= order.indexOf("data");
+        return {
+          ...current,
+          pendingResetFrom: null,
+          completedStages,
+          lastStage: from,
+          data: resetData ? {
+            ...current.data,
+            preparedForgetFile: null,
+            preparedRetainFile: null,
+            previewRows: [],
+            selectedPreviewKeys: [],
+            previewReady: false,
+            previewFilterable: true,
+            uploadResponse: null,
+            extractionJob: null,
+            extractionResponse: null,
+            backendUploadError: null
+          } : current.data,
+          run: start <= order.indexOf("running") ? emptyRun : current.run
+        };
+      }),
       saveNow: () => saveProject(project)
     }),
     [commit, project]

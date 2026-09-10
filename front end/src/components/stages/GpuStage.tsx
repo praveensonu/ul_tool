@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { listGpus, type GpuInfo } from "../../api";
 import { useProject } from "../../state/ProjectContext";
+import HelpTip, { fieldHelp } from "../ui/HelpTip";
 
 export default function GpuStage() {
   const { project, updateModel, markStageCompleted } = useProject();
@@ -8,7 +9,7 @@ export default function GpuStage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const selected = project.model.gpuIds;
-  const locked = project.run.message === "Training is running." || ["queued", "running", "cancelling"].includes(project.data.extractionJob?.status ?? "") ||
+  const locked = project.run.message === "Unlearning is running." || ["queued", "running", "cancelling"].includes(project.data.extractionJob?.status ?? "") ||
     ["queued", "running", "cancelling"].includes(project.run.evaluationJob?.status ?? "");
 
   async function refresh() {
@@ -41,7 +42,7 @@ export default function GpuStage() {
     <section>
       <div className="stage-heading">
         <span className="stage-kicker">Stage 1</span>
-        <h1>Select GPUs</h1>
+        <div className="title-with-help"><h1>Select GPUs</h1><HelpTip text={fieldHelp.gpu}/></div>
         <p>Select one or more GPUs for data extraction, unlearning, and generation.
           All listed GPUs can be selected regardless of current usage. Evaluation scoring uses the first selected GPU.</p>
       </div>

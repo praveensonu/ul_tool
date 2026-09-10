@@ -16,9 +16,29 @@ Today Date: 26 July 2024
 {question}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 `;
 
-export function buildPromptTemplate(userPrompt: string) {
+const promptTemplates = {
+  llama: defaultTemplate,
+  mistral: `<s>[INST] {question} [/INST]`,
+  gemma: `<bos><start_of_turn>user\n{question}<end_of_turn>\n<start_of_turn>model\n`,
+  qwen: `<|im_start|>user\n{question}<|im_end|>\n<|im_start|>assistant\n`,
+  phi: `<|user|>\n{question}<|end|>\n<|assistant|>\n`,
+  fallback: `{question}`
+} as const;
+
+export function promptFamily(modelName: string) {
+  const model = modelName.toLowerCase();
+  if (model.includes("mistral") || model.includes("mixtral")) return "Mistral";
+  if (model.includes("gemma")) return "Gemma";
+  if (model.includes("qwen")) return "Qwen";
+  if (model.includes("phi")) return "Phi";
+  if (model.includes("llama")) return "Llama";
+  return "Generic";
+}
+
+export function buildPromptTemplate(userPrompt: string, modelName = "") {
   const promptWithDatasetQuestion = `${userPrompt.trim()}\n\n{question}`;
-  return defaultTemplate.replace("{question}", promptWithDatasetQuestion);
+  const family = promptFamily(modelName).toLowerCase() as keyof typeof promptTemplates;
+  return (promptTemplates[family] ?? promptTemplates.fallback).replace("{question}", promptWithDatasetQuestion);
 }
 
 export const defaultLoraTargets = ["q_proj", "v_proj", "k_proj", "o_proj"];
@@ -43,7 +63,7 @@ export const retainRequiredMethods: UnlearningMethod[] = fallbackUnlearningMetho
   .filter((method) => method.requires_retain)
   .map((method) => method.value);
 
-export function createDefaultProject(name = "Untitled project"): Project {
+export function createDefaultProject(name = "Unnamed project"): Project {
   const now = new Date().toISOString();
 
   return {
@@ -60,6 +80,8 @@ export function createDefaultProject(name = "Untitled project"): Project {
       running: false,
       evaluation: false
     },
+    setupComplete: false,
+    pendingResetFrom: null,
     data: {
       sourceMode: "upload",
       forgetFile: null,
@@ -67,6 +89,7 @@ export function createDefaultProject(name = "Untitled project"): Project {
       fullFile: null,
       poisonFile: null,
       extractionModelName: "meta-llama/Llama-3.2-1B-Instruct",
+      extractionHfKey: "",
       extractionMaxLength: 512,
       gradientBatchSize: 2,
       extractionAdaptorPath: "",
@@ -137,7 +160,7 @@ function migratedCompletion(lastStage: ProjectStage, hasTraining: boolean, hasEv
 
 export function normalizeProject(value: unknown): Project {
   const raw = (value ?? {}) as Partial<Project> & Record<string, unknown>;
-  const base = createDefaultProject(typeof raw.name === "string" ? raw.name : "Untitled project");
+  const base = createDefaultProject(typeof raw.name === "string" ? raw.name : "Unnamed project");
   const lastStage: ProjectStage =
     raw.lastStage === "gpu" ||
     raw.lastStage === "data" ||
@@ -170,6 +193,8 @@ export function normalizeProject(value: unknown): Project {
       ...base.completedStages,
       ...completion
     },
+    setupComplete: typeof raw.setupComplete === "boolean" ? raw.setupComplete : true,
+    pendingResetFrom: raw.pendingResetFrom ?? null,
     data: {
       ...base.data,
       ...rawData,

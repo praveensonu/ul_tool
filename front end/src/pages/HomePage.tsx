@@ -5,6 +5,7 @@ import ProjectCard from "../components/project/ProjectCard";
 import { createDefaultProject } from "../defaults";
 import { deleteProject, listProjects, saveProject } from "../storage/projectStorage";
 import type { Project } from "../types";
+import ThemeControl from "../components/ui/ThemeControl";
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -48,10 +49,9 @@ export default function HomePage() {
           <h1>Projects</h1>
           <p className="muted">Create a new unlearning project or continue from your previous history.</p>
         </div>
-        <button className="primary-button" type="button" onClick={handleCreate}>
-          <Plus size={18} />
-          New unlearning project
-        </button>
+        <div className="home-actions"><ThemeControl /><button className="primary-button" type="button" onClick={handleCreate}>
+          <Plus size={18} /> New unlearning project
+        </button></div>
       </header>
 
       {error && <div className="notice error">{error}</div>}

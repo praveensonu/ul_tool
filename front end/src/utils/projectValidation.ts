@@ -2,6 +2,7 @@ import { retainRequiredMethods } from "../defaults";
 import type { Project, ProjectStage } from "../types";
 
 const stageOrder: ProjectStage[] = ["gpu", "data", "model", "hyperparameters", "running", "evaluation"];
+function projectStageOrder(project: Project) { return project.data.sourceMode === "extract" ? stageOrder.filter((stage) => stage !== "model") : stageOrder; }
 
 export function isDataValid(project: Project) {
   if (project.data.sourceMode === "extract") {
@@ -28,6 +29,7 @@ export function isDataValid(project: Project) {
 }
 
 export function isModelValid(project: Project) {
+  if (project.data.sourceMode === "extract") return project.data.extractionModelName.trim().length > 0;
   const modelNameOk = project.model.modelName.trim().length > 0;
   const adaptorOk =
     project.model.method !== "adaptor" || project.model.adaptorPath.trim().length > 0;
@@ -80,13 +82,13 @@ export function canAccessStage(project: Project, stage: ProjectStage) {
   if (stage === "gpu") return true;
   if (!project.completedStages.gpu || !project.model.gpuIds.length) return false;
   if (stage === "data") return true;
-  if (stage === "model") return project.completedStages.data;
+  if (stage === "model") return project.data.sourceMode === "upload" && project.completedStages.data;
   if (stage === "hyperparameters") {
-    return project.completedStages.data && project.completedStages.model;
+    return project.completedStages.data && (project.data.sourceMode === "extract" || project.completedStages.model);
   }
   if (stage === "running") return (
     project.completedStages.data &&
-    project.completedStages.model &&
+    (project.data.sourceMode === "extract" || project.completedStages.model) &&
     project.completedStages.hyperparameters
   );
   return (
@@ -95,14 +97,16 @@ export function canAccessStage(project: Project, stage: ProjectStage) {
   );
 }
 
-export function getPreviousStage(stage: ProjectStage): ProjectStage | null {
-  const index = stageOrder.indexOf(stage);
-  return index > 0 ? stageOrder[index - 1] : null;
+export function getPreviousStage(project: Project, stage: ProjectStage): ProjectStage | null {
+  const order = projectStageOrder(project);
+  const index = order.indexOf(stage);
+  return index > 0 ? order[index - 1] : null;
 }
 
-export function getNextStage(stage: ProjectStage): ProjectStage | null {
-  const index = stageOrder.indexOf(stage);
-  return index >= 0 && index < stageOrder.length - 1 ? stageOrder[index + 1] : null;
+export function getNextStage(project: Project, stage: ProjectStage): ProjectStage | null {
+  const order = projectStageOrder(project);
+  const index = order.indexOf(stage);
+  return index >= 0 && index < order.length - 1 ? order[index + 1] : null;
 }
 
 export function isProjectStage(value: string | undefined): value is ProjectStage {

@@ -1,12 +1,14 @@
-import { ArrowLeft, CheckCircle2, Loader2, RefreshCw, WifiOff } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Loader2, RefreshCw, RotateCcw, WifiOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { checkBackend } from "../../api";
 import { useProject } from "../../state/ProjectContext";
+import ThemeControl from "../ui/ThemeControl";
+import HelpTip, { fieldHelp } from "../ui/HelpTip";
 
 type BackendState = "checking" | "ok" | "down";
 
 export default function ProjectHeader({ onBack }: { onBack: () => void }) {
-  const { project, renameProject } = useProject();
+  const { project, renameProject, resetPipeline } = useProject();
   const [backendState, setBackendState] = useState<BackendState>("checking");
   const [backendMessage, setBackendMessage] = useState("Checking backend");
 
@@ -33,15 +35,9 @@ export default function ProjectHeader({ onBack }: { onBack: () => void }) {
           <ArrowLeft size={17} />
           Projects
         </button>
-        <input
-          className="project-title-input"
-          aria-label="Project name"
-          value={project.name}
-          onChange={(event) => renameProject(event.target.value)}
-        />
+        <div className="project-title-wrap"><input className="project-title-input" aria-label="Project name" value={project.name || "Unnamed project"} onChange={(event) => renameProject(event.target.value || "Unnamed project")} /><HelpTip text={fieldHelp.projectName} /></div>
       </div>
-
-      <button className={`backend-status ${backendState}`} type="button" onClick={refreshBackend}>
+      <div className="header-actions"><ThemeControl />{project.pendingResetFrom && <button className="reset-button" type="button" onClick={resetPipeline}><RotateCcw size={15} /><span>Reset from {project.pendingResetFrom}</span></button>}<button className={`backend-status ${backendState}`} type="button" onClick={refreshBackend}>
         {backendState === "checking" ? (
           <Loader2 className="spin" size={16} />
         ) : backendState === "ok" ? (
@@ -51,7 +47,7 @@ export default function ProjectHeader({ onBack }: { onBack: () => void }) {
         )}
         <span>{backendMessage}</span>
         <RefreshCw size={14} />
-      </button>
+      </button></div>
     </header>
   );
 }

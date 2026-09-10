@@ -8,6 +8,8 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function metric(value: number | undefined) { return typeof value === "number" && Number.isFinite(value) ? value.toFixed(3) : "—"; }
+
 export default function ProjectCard({
   project,
   onOpen,
@@ -29,7 +31,7 @@ export default function ProjectCard({
       </div>
 
       <div>
-        <h2>{project.name || "Untitled project"}</h2>
+        <h2>{project.name || "Unnamed project"}</h2>
         <p className="muted">Last stage: {project.lastStage}</p>
       </div>
 
@@ -47,6 +49,14 @@ export default function ProjectCard({
           <dd>{formatDate(project.updatedAt)}</dd>
         </div>
       </dl>
+
+      <div className="project-last-results">
+        <span>Last evaluation</span>
+        <div><small>Forget score</small><strong>{metric(project.run.evaluation?.post_unlearning.forget_quality.score)}</strong></div>
+        <div><small>Utility score</small><strong>{metric(project.run.evaluation?.post_unlearning.model_utility.score)}</strong></div>
+        <div><small>Forget PPL</small><strong>{metric(project.run.evaluation?.post_unlearning.forget_quality.average_perplexity)}</strong></div>
+        <div><small>Retain PPL</small><strong>{metric(project.run.evaluation?.post_unlearning.model_utility.average_perplexity)}</strong></div>
+      </div>
 
       <button className="primary-button full-width" type="button" onClick={onOpen}>
         Open project

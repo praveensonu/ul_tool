@@ -122,6 +122,55 @@ export async function cancelEvaluation(jobId: string) {
   return readJson<JobCancelResponse>(response);
 }
 
+export async function validateSentenceTransformerModel(modelName: string, hfToken?: string) {
+  const value = modelName.trim();
+  if (/^(?:\.{0,2}\/|~\/|\/)/.test(value)) {
+    throw new Error("Local model paths cannot be verified safely from the browser. Enter a Hugging Face sentence-transformers repository name.");
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)) {
+    throw new Error("Use a valid Hugging Face repository name, for example sentence-transformers/all-MiniLM-L6-v2.");
+  }
+
+  const encodedId = value.split("/").map(encodeURIComponent).join("/");
+  const headers: HeadersInit = {};
+  if (hfToken?.trim()) headers.Authorization = `Bearer ${hfToken.trim()}`;
+
+  let response: Response;
+  try {
+    response = await fetch(`https://huggingface.co/api/models/${encodedId}`, { headers });
+  } catch {
+    throw new Error("The sentence-transformers model could not be verified. Check the browser's internet access and try again.");
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("This sentence-transformers repository is private or gated. Use an accessible model and a valid Hugging Face token.");
+  }
+  if (response.status === 404) {
+    throw new Error("Sentence-transformers model not found on Hugging Face. Check the repository name.");
+  }
+  if (!response.ok) {
+    throw new Error(`The sentence-transformers model could not be verified (HTTP ${response.status}).`);
+  }
+
+  const metadata = await response.json() as {
+    library_name?: string;
+    pipeline_tag?: string;
+    tags?: string[];
+  };
+  const tags = Array.isArray(metadata.tags) ? metadata.tags : [];
+  const compatible =
+    metadata.library_name === "sentence-transformers" ||
+    tags.includes("sentence-transformers") ||
+    metadata.pipeline_tag === "feature-extraction" ||
+    metadata.pipeline_tag === "sentence-similarity";
+
+  if (!compatible) {
+    throw new Error("The repository exists, but it is not identified as a sentence-transformers/embedding model.");
+  }
+
+  return true;
+}
+
 export async function runEvaluation(payload: EvaluationRequest) {
   const response = await fetch(apiUrl("evaluation/run"), {
     method: "POST",

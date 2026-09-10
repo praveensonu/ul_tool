@@ -7,12 +7,13 @@ import {
   uploadDatasets
 } from "../../api";
 import { useProject } from "../../state/ProjectContext";
-import { buildPromptTemplate } from "../../defaults";
+import { buildPromptTemplate, promptFamily } from "../../defaults";
 import type {
   DataSelectionMethod,
-  DataSourceMode,
   ProjectPreviewRow
 } from "../../types";
+import { FieldLabel, fieldHelp } from "../ui/HelpTip";
+import JobProgress from "../ui/JobProgress";
 import {
   backendPreviewToRows,
   parseDatasetFile,
@@ -143,6 +144,7 @@ export default function DataStage() {
           updateModel({
             modelName: data.extractionModelName.trim(),
             adaptorPath: data.extractionAdaptorPath.trim(),
+            hfKey: data.extractionHfKey.trim(),
             method: data.extractionAdaptorPath.trim() ? "adaptor" : "full"
           });
           setDataPrepared({
@@ -172,21 +174,11 @@ export default function DataStage() {
     };
   }, [activeExtractionJobId]);
 
-  function changeMode(mode: DataSourceMode) {
-    updateDataInput({
-      sourceMode: mode,
-      forgetFile: null,
-      retainFile: null,
-      fullFile: null,
-      poisonFile: null
-    });
-  }
-
   async function uploadToBackend(forgetFile: File, retainFile: File | null) {
     const formData = new FormData();
     formData.append("forget_set", forgetFile);
     if (retainFile) formData.append("retain_set", retainFile);
-    formData.append("prompt_template", buildPromptTemplate(data.promptTemplate));
+    formData.append("prompt_template", buildPromptTemplate(data.promptTemplate, project.model.modelName));
 
     try {
       const response = await uploadDatasets(formData);
@@ -300,10 +292,11 @@ export default function DataStage() {
         const formData = new FormData();
         formData.append("full_dataset", data.fullFile);
         formData.append("poison_set", data.poisonFile);
-        formData.append("prompt_template", buildPromptTemplate(data.promptTemplate));
+        formData.append("prompt_template", buildPromptTemplate(data.promptTemplate, data.extractionModelName));
         formData.append("experiment_name", project.name);
         project.model.gpuIds.forEach((id) => formData.append("gpu_ids", String(id)));
         formData.append("model_name", data.extractionModelName.trim());
+        if (data.extractionHfKey.trim()) formData.append("hf_key", data.extractionHfKey.trim());
         formData.append("gradient_batch_size", String(data.gradientBatchSize));
         formData.append("max_length", String(data.extractionMaxLength));
         formData.append("selection_method", data.selectionMethod);
@@ -331,6 +324,9 @@ export default function DataStage() {
       } else if (data.previewReady && data.previewFilterable && !data.preparedForgetFile) {
         await applyCurrentSelection();
       } else {
+        if (!data.forgetFile && !data.preparedForgetFile) {
+          throw new Error("The forget dataset is mandatory. Choose a forget-set file before continuing.");
+        }
         await prepareInitialData();
       }
     } catch (uploadError) {
@@ -388,28 +384,16 @@ export default function DataStage() {
 
       <form className="stage-form" onSubmit={handleUpload}>
         <fieldset className="form-fieldset" disabled={Boolean(isExtracting) || uploading}>
-        <div className="field">
-          <span>Data source</span>
-          <div className="segmented" role="group" aria-label="Data source mode">
-            {(["upload", "extract"] as DataSourceMode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                className={data.sourceMode === mode ? "active" : ""}
-                onClick={() => changeMode(mode)}
-              >
-                {mode}
-              </button>
-            ))}
-          </div>
-        </div>
+        <div className="mode-banner"><span>{data.sourceMode === "upload" ? "Upload pipeline" : "Extract pipeline"}</span><small>The data source is fixed for this project.</small></div>
 
         {data.sourceMode === "upload" ? (
           <div className="field-grid two">
             <label className="field">
-              <span>Forget set</span>
+              <FieldLabel help={fieldHelp.forgetSet}>Forget set <em className="required-mark">required</em></FieldLabel>
               <input
                 type="file"
+                required={!data.forgetFile && !data.preparedForgetFile}
+                aria-required="true"
                 accept=".csv,.json,.jsonl,.parquet"
                 onChange={(event) => updateDataInput({ forgetFile: event.target.files?.[0] ?? null })}
               />
@@ -417,7 +401,7 @@ export default function DataStage() {
             </label>
 
             <label className="field">
-              <span>Retain set <em>optional</em></span>
+              <FieldLabel help={fieldHelp.retainSet}>Retain set <em>optional</em></FieldLabel>
               <input
                 type="file"
                 accept=".csv,.json,.jsonl,.parquet"
@@ -429,7 +413,7 @@ export default function DataStage() {
         ) : (
           <div className="field-grid two">
             <label className="field">
-              <span>Full dataset</span>
+              <FieldLabel help={fieldHelp.fullDataset}>Full dataset</FieldLabel>
               <input
                 type="file"
                 accept=".csv,.json,.jsonl,.parquet"
@@ -439,7 +423,7 @@ export default function DataStage() {
             </label>
 
             <label className="field">
-              <span>Poison set</span>
+              <FieldLabel help={fieldHelp.poisonSet}>Poison set</FieldLabel>
               <input
                 type="file"
                 accept=".csv,.json,.jsonl,.parquet"
@@ -453,7 +437,7 @@ export default function DataStage() {
         {data.sourceMode === "extract" && (
           <>
             <div className="field">
-              <span>Extraction method</span>
+              <FieldLabel help={fieldHelp.extractionMethod}>Extraction method</FieldLabel>
               <div className="segmented" role="group" aria-label="Extraction method">
                 {(["raslik", "grace"] as DataSelectionMethod[]).map((method) => (
                   <button
@@ -470,7 +454,7 @@ export default function DataStage() {
 
             <div className="field-grid two">
               <label className="field">
-                <span>Forget samples</span>
+                <FieldLabel help={fieldHelp.forgetSamples}>Forget samples</FieldLabel>
                 <input
                   type="number"
                   min={1}
@@ -480,7 +464,7 @@ export default function DataStage() {
               </label>
 
               <label className="field">
-                <span>Retain samples</span>
+                <FieldLabel help={fieldHelp.retainSamples}>Retain samples</FieldLabel>
                 <input
                   type="number"
                   min={1}
@@ -493,7 +477,7 @@ export default function DataStage() {
             {data.selectionMethod === "grace" && (
               <div className="field-grid two">
                 <label className="field">
-                  <span>Top-n candidate pool</span>
+                  <FieldLabel help={fieldHelp.candidatePool}>Top-n candidate pool</FieldLabel>
                   <input
                     type="number"
                     min={data.forgetSize}
@@ -504,7 +488,7 @@ export default function DataStage() {
                 </label>
 
                 <label className="field">
-                  <span>Retain clusters</span>
+                  <FieldLabel help={fieldHelp.retainClusters}>Retain clusters</FieldLabel>
                   <input
                     type="number"
                     min={1}
@@ -520,14 +504,14 @@ export default function DataStage() {
             )}
 
             <label className="field">
-              Gradient batch size per GPU
+              <FieldLabel help={fieldHelp.gradientBatch}>Gradient batch size per GPU</FieldLabel>
               <input type="number" min={1} value={data.gradientBatchSize} disabled={isExtracting}
                 onChange={(event) => updateDataInput({ gradientBatchSize: Math.max(1, Math.floor(Number(event.target.value) || 1)) })} />
               <small>Larger batches need more GPU memory. Set to 1 if memory is limited or the model does not support batched gradients.</small>
             </label>
-            <div className="field-grid three">
+            <div className="field-grid two">
               <label className="field">
-                <span>Model name or local path</span>
+                <FieldLabel help={fieldHelp.model}>Model name or local path</FieldLabel>
                 <input
                   value={data.extractionModelName}
                   onChange={(event) =>
@@ -538,7 +522,7 @@ export default function DataStage() {
               </label>
 
               <label className="field">
-                <span>Max length</span>
+                <FieldLabel help={fieldHelp.maxLength}>Max length</FieldLabel>
                 <input
                   type="number"
                   min={1}
@@ -550,7 +534,7 @@ export default function DataStage() {
               </label>
 
               <label className="field">
-                <span>Adapter / LoRA path <em>optional</em></span>
+                <FieldLabel help={fieldHelp.adapter}>Adapter / LoRA path <em>optional</em></FieldLabel>
                 <input
                   value={data.extractionAdaptorPath}
                   onChange={(event) =>
@@ -558,6 +542,10 @@ export default function DataStage() {
                   }
                   placeholder="/path/to/adapter"
                 />
+              </label>
+              <label className="field">
+                <FieldLabel help={fieldHelp.hfToken}>Hugging Face token <em>optional</em></FieldLabel>
+                <input type="password" value={data.extractionHfKey} onChange={(event) => updateDataInput({ extractionHfKey: event.target.value })} placeholder="hf_..." />
               </label>
             </div>
 
@@ -568,7 +556,7 @@ export default function DataStage() {
                 onChange={(event) => updateDataInput({ keepGradients: event.target.checked })}
               />
               <span>
-                Keep cached gradients
+                <FieldLabel help={fieldHelp.keepGradients}>Keep cached gradients</FieldLabel>
                 <small>When unchecked, training and poison gradients are removed after selection.</small>
               </span>
             </label>
@@ -576,12 +564,12 @@ export default function DataStage() {
         )}
 
         <label className="field prompt-field">
-          <span>Prompt</span>
+          <FieldLabel help={fieldHelp.prompt}>Prompt</FieldLabel>
 
           <textarea
             rows={3}
             value={data.promptTemplate}
-            placeholder="Instruction to place before each dataset question..."
+            placeholder="Write only the instruction for the model..."
             onChange={(event) =>
               updateDataInput({
                 promptTemplate: event.target.value
@@ -590,7 +578,7 @@ export default function DataStage() {
           />
 
           <small>
-            The uploaded row's question is appended and the complete model prompt is reconstructed automatically.
+            {promptFamily(data.sourceMode === "extract" ? data.extractionModelName : project.model.modelName)} template selected automatically. The row question is appended for you.
           </small>
         </label>
         </fieldset>
@@ -617,33 +605,7 @@ export default function DataStage() {
         </div>
       </form>
 
-      {extractionJob && (
-        <section className="evaluation-progress-card extraction-progress-card" aria-live="polite">
-          <div className="progress-heading">
-            <div>
-              <span className={`status-dot ${extractionJob.status}`} />
-              <strong>{extractionJob.message}</strong>
-            </div>
-            <span>{extractionJob.status}</span>
-          </div>
-          <ol className="progress-timeline">
-            {extractionJob.progress.map((event, index) => (
-              <li
-                key={`${event.timestamp}-${index}`}
-                className={index === extractionJob.progress.length - 1 ? "current" : "done"}
-              >
-                {index === extractionJob.progress.length - 1 && isExtracting
-                  ? <Loader2 className="spin" size={15} />
-                  : <CheckCircle2 size={15} />}
-                <div>
-                  <strong>{event.message}</strong>
-                  <small>{event.stage.split("_").join(" ")}</small>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
+      {extractionJob && <JobProgress title="Dataset extraction" status={extractionJob.status} message={extractionJob.message} progress={extractionJob.progress} />}
 
       {data.backendUploadError && data.previewReady && (
         <div className="notice warning">

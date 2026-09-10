@@ -11,6 +11,7 @@ import EvaluationStage from "../components/stages/EvaluationStage";
 import { ProjectProvider, useProject } from "../state/ProjectContext";
 import { getProject } from "../storage/projectStorage";
 import type { Project, ProjectStage } from "../types";
+import ProjectSetup from "../components/project/ProjectSetup";
 import {
   canAccessStage,
   getNextStage,
@@ -58,20 +59,21 @@ function ProjectWorkspace({ requestedStage }: { requestedStage?: string }) {
   }
 
   function continueToNext() {
-    const next = getNextStage(stage);
+    const next = getNextStage(project, stage);
     if (!next || !isStageValid(project, stage)) return;
     markStageCompleted(stage, true);
     setLastStage(next);
     navigate(`/project/${project.id}/${next}`);
   }
 
-  const previous = getPreviousStage(stage);
-  const next = getNextStage(stage);
+  const previous = getPreviousStage(project, stage);
+  const next = getNextStage(project, stage);
   const canContinue = next ? isStageValid(project, stage) : false;
 
   return (
     <main className="project-shell">
       <ProjectHeader onBack={goHome} />
+      {!project.setupComplete && <ProjectSetup />}
       <StepNavigation project={project} currentStage={stage} onSelect={goToStage} />
 
       <div className="stage-container">

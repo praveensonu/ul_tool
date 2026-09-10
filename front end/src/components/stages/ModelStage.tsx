@@ -3,6 +3,7 @@ import { getLoraTargetModules } from "../../api";
 import { defaultLoraTargets } from "../../defaults";
 import { useProject } from "../../state/ProjectContext";
 import type { LoraTarget, Method } from "../../types";
+import { FieldLabel, fieldHelp } from "../ui/HelpTip";
 
 export default function ModelStage() {
   const { project, updateModel } = useProject();
@@ -53,7 +54,7 @@ export default function ModelStage() {
       <div className="stage-form">
         <div className="field-grid two">
           <label className="field">
-            <span>Model name or local path</span>
+            <FieldLabel help={fieldHelp.model}>Model name or local path</FieldLabel>
             <input
               value={model.modelName}
               onChange={(event) => updateModel({ modelName: event.target.value })}
@@ -62,7 +63,7 @@ export default function ModelStage() {
           </label>
 
           <label className="field">
-            <span>Hugging Face token <em>optional</em></span>
+            <FieldLabel help={fieldHelp.hfToken}>Hugging Face token <em>optional</em></FieldLabel>
             <input
               type="password"
               value={model.hfKey}
@@ -73,7 +74,7 @@ export default function ModelStage() {
         </div>
 
         <div className="field">
-          <span>Method</span>
+          <FieldLabel help={fieldHelp.method}>Method</FieldLabel>
           <div className="segmented" role="group" aria-label="Model method">
             {(["full", "lora", "adaptor"] as Method[]).map((method) => (
               <button
@@ -90,7 +91,7 @@ export default function ModelStage() {
 
         {model.method === "adaptor" && (
           <label className="field">
-            <span>Adaptor path</span>
+            <FieldLabel help={fieldHelp.adapter}>Adaptor path</FieldLabel>
             <input
               value={model.adaptorPath}
               onChange={(event) => updateModel({ adaptorPath: event.target.value })}
@@ -102,7 +103,7 @@ export default function ModelStage() {
         {model.method === "lora" && (
           <div className="field">
             <div className="field-label-row">
-              <span>LoRA target modules</span>
+              <FieldLabel help={fieldHelp.loraTargets}>LoRA target modules</FieldLabel>
               <div className="selection-actions">
                 <button
                   className="text-button"

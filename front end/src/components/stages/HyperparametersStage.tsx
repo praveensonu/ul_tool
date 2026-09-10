@@ -3,6 +3,7 @@ import { getUnlearningMethods } from "../../api";
 import { fallbackUnlearningMethods } from "../../defaults";
 import { useProject } from "../../state/ProjectContext";
 import type { StepMode, UnlearningMethod, UnlearningMethodInfo } from "../../types";
+import { FieldLabel, fieldHelp } from "../ui/HelpTip";
 
 const contextOptions = [512, 1024, 2048, 4096, 8192];
 
@@ -48,8 +49,9 @@ export default function HyperparametersStage() {
       </div>
 
       <div className="stage-form">
+        <div className="common-controls"><span className="eyebrow">Most important controls</span><div><article><strong>Forgetting strength</strong><p>Primarily shaped by the objective, learning rate, and unlearning length.</p></article><article><strong>Retention strength</strong><p>Protected by a retain-aware method and a representative retain set.</p></article></div></div>
         <label className="field">
-          <span>Unlearning method</span>
+          <FieldLabel help={fieldHelp.unlearningMethod}>Unlearning method</FieldLabel>
           <select
             value={h.unlearningMethod}
             onChange={(event) =>
@@ -68,7 +70,7 @@ export default function HyperparametersStage() {
         </label>
 
         <div className="field">
-          <span>Training length</span>
+          <FieldLabel help={fieldHelp.trainingLength}>Unlearning length</FieldLabel>
           <div className="segmented compact" role="group" aria-label="Training length mode">
             {(["max_steps", "epochs"] as StepMode[]).map((mode) => (
               <button
@@ -89,7 +91,7 @@ export default function HyperparametersStage() {
         <div className="field-grid three">
           {h.stepMode === "max_steps" ? (
             <label className="field">
-              <span>Max steps</span>
+              <FieldLabel help={fieldHelp.trainingLength}>Max steps</FieldLabel>
               <input
                 type="number"
                 min={1}
@@ -99,7 +101,7 @@ export default function HyperparametersStage() {
             </label>
           ) : (
             <label className="field">
-              <span>Epochs</span>
+              <FieldLabel help={fieldHelp.trainingLength}>Epochs</FieldLabel>
               <input
                 type="number"
                 min={1}
@@ -110,7 +112,7 @@ export default function HyperparametersStage() {
           )}
 
           <label className="field">
-            <span>Learning rate</span>
+            <FieldLabel help={fieldHelp.learningRate}>Learning rate</FieldLabel>
             <input
               value={h.learningRate}
               onChange={(event) => updateHyperparameters({ learningRate: event.target.value })}
@@ -118,7 +120,7 @@ export default function HyperparametersStage() {
           </label>
 
           <label className="field">
-            <span>Context length</span>
+            <FieldLabel help={fieldHelp.contextLength}>Context length</FieldLabel>
             <select
               value={h.contextLength}
               onChange={(event) => updateHyperparameters({ contextLength: Number(event.target.value) })}
@@ -130,7 +132,7 @@ export default function HyperparametersStage() {
           </label>
 
           <label className="field">
-            <span>Batch size</span>
+            <FieldLabel help={fieldHelp.batchSize}>Batch size</FieldLabel>
             <input
               type="number"
               min={1}
@@ -140,7 +142,7 @@ export default function HyperparametersStage() {
           </label>
 
           <label className="field">
-            <span>Gradient accumulation</span>
+            <FieldLabel help={fieldHelp.gradAccum}>Gradient accumulation</FieldLabel>
             <input
               type="number"
               min={1}
@@ -150,7 +152,7 @@ export default function HyperparametersStage() {
           </label>
 
           <label className="field">
-            <span>Save steps</span>
+            <FieldLabel help={fieldHelp.saveSteps}>Save steps</FieldLabel>
             <input
               type="number"
               min={1}
@@ -160,7 +162,7 @@ export default function HyperparametersStage() {
           </label>
 
           <label className="field">
-            <span>Weight decay</span>
+            <FieldLabel help={fieldHelp.weightDecay}>Weight decay</FieldLabel>
             <input
               type="number"
               min={0}

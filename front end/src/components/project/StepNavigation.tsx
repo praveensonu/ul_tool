@@ -20,9 +20,10 @@ export default function StepNavigation({
   currentStage: ProjectStage;
   onSelect: (stage: ProjectStage) => void;
 }) {
+  const visibleSteps = project.data.sourceMode === "extract" ? steps.filter((step) => step.id !== "model") : steps;
   return (
     <nav className="step-navigation" aria-label="Project stages">
-      {steps.map((step, index) => {
+      {visibleSteps.map((step, index) => {
         const accessible = canAccessStage(project, step.id);
         const complete = isStageComplete(project, step.id);
         const active = step.id === currentStage;
