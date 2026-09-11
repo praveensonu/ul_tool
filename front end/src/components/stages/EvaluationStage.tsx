@@ -193,7 +193,7 @@ export default function EvaluationStage() {
           <FieldLabel help={fieldHelp.evaluationBatch}>Evaluation batch size</FieldLabel>
           <input type="number" min={1} disabled={isRunning} value={project.run.evaluationBatchSize}
             onChange={(event) => updateRun({ evaluationBatchSize: Math.max(1, Math.floor(Number(event.target.value) || 1)) })} />
-          <small>Used for generation, conditional probability, and perplexity. Reduce it if GPU memory is limited.</small>
+          <small>Used for generation, conditional probability, and perplexity; for benchmarks, this is the batch size per selected GPU. Reduce it if GPU memory is limited.</small>
         </label>
         <div className="field-grid two">
           <label className="field">

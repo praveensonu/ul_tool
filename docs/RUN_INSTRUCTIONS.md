@@ -295,6 +295,10 @@ datasets are downloaded on first use and subsequently use the Hugging Face cache
 GPQA requires accepting the dataset terms at
 <https://huggingface.co/datasets/Idavidrein/gpqa>. Use the project's configured HF
 key with access to that dataset, or an existing `HF_TOKEN`/Hugging Face login.
+Benchmark scoring uses the evaluation batch size per selected GPU. With multiple
+GPUs selected, batches are split across model replicas on those GPUs; each GPU
+must fit the model and its scoring batch. Results appear in Primary outcomes
+directly below overall scores and perplexity, in both gauge and bar views.
 Progress and cancellation checks occur between benchmark scoring batches.
 A benchmark failure fails evaluation instead of silently reporting a missing score.
 

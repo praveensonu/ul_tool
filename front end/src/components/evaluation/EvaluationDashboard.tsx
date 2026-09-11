@@ -235,7 +235,11 @@ export default function EvaluationDashboard({ result }: { result: EvaluationResp
     { label: "ROUGE-L", pre: pre.model_utility.mean_rouge_l, post: post.model_utility.mean_rouge_l, direction: "up" },
     { label: "Cosine similarity", pre: pre.model_utility.mean_cosine_similarity, post: post.model_utility.mean_cosine_similarity, direction: "up" },
   ];
-  const details = [...overall, ...perplexity, ...forget, ...retain];
+  const benchmarks: MetricRow[] = pre.benchmarks && post.benchmarks ? [
+    { label: "MMLU", pre: pre.benchmarks.mmlu, post: post.benchmarks.mmlu, direction: "stable" },
+    { label: "GPQA", pre: pre.benchmarks.gpqa, post: post.benchmarks.gpqa, direction: "stable" },
+  ] : [];
+  const details = [...overall, ...perplexity, ...benchmarks, ...forget, ...retain];
 
   return (
     <div className="evaluation-dashboard">
@@ -273,6 +277,11 @@ export default function EvaluationDashboard({ result }: { result: EvaluationResp
             </>
           )}
         </div>
+        {benchmarks.length > 0 && (chartMode === "gauges" ? (
+          <GaugeComparison title="Benchmark accuracy" subtitle="MMLU and GPQA general capability before and after unlearning." rows={benchmarks} />
+        ) : (
+          <ComparisonBars title="Benchmark accuracy" subtitle="MMLU and GPQA general capability before and after unlearning." rows={benchmarks} />
+        ))}
       </section>
 
       <section className="secondary-results">
@@ -292,16 +301,7 @@ export default function EvaluationDashboard({ result }: { result: EvaluationResp
         </div>
       </section>
 
-      {pre.benchmarks && post.benchmarks && (
-        <ComparisonBars
-          title="Benchmark accuracy"
-          subtitle="General capability after unlearning."
-          rows={[
-            { label: "MMLU", pre: pre.benchmarks.mmlu, post: post.benchmarks.mmlu, direction: "stable" },
-            { label: "GPQA", pre: pre.benchmarks.gpqa, post: post.benchmarks.gpqa, direction: "stable" },
-          ]}
-        />
-      )}
+
 
       <details className="metric-table-card">
         <summary>Detailed numerical comparison</summary>

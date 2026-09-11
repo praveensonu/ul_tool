@@ -150,6 +150,7 @@ def _collect_model_outputs_phase(
     batch_size: int = 4,
     hf_key: str | None = None,
     include_benchmarks: bool = False,
+    gpu_ids: list[int] | None = None,
 ) -> dict | None:
     from eval.eval_utils import compute_model_outputs
 
@@ -227,7 +228,7 @@ def _collect_model_outputs_phase(
 
             return evaluate_benchmarks(
                 model, tokenizer, batch_size=batch_size, hf_key=hf_key,
-                progress_callback=report_benchmark,
+                progress_callback=report_benchmark, gpu_ids=gpu_ids,
             )
         return None
     finally:
@@ -248,7 +249,7 @@ def _collect_model_outputs(*, gpu_ids: list[int], **kwargs) -> dict | None:
     try:
         os.environ["UL_MODEL_DEVICE_MAP"] = "cuda:0"
         benchmarks = _collect_model_outputs_phase(
-            **kwargs, phase="metrics" if len(gpu_ids) > 1 else "both"
+            **kwargs, gpu_ids=gpu_ids, phase="metrics" if len(gpu_ids) > 1 else "both"
         )
         if len(gpu_ids) > 1:
             os.environ["UL_MODEL_DEVICE_MAP"] = "balanced"

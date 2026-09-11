@@ -22,7 +22,7 @@ class BenchmarkTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 _accuracy(bad, "mmlu", group=True)
 
-    def test_real_hflm_wraps_existing_model_and_returns_two_scores(self):
+    def test_real_hflm_wraps_existing_model_and_returns_two_scores(self, gpu_ids=None):
         from tokenizers import Tokenizer
         from tokenizers.models import WordLevel
         from transformers import GPT2Config, GPT2LMHeadModel, PreTrainedTokenizerFast
@@ -35,6 +35,7 @@ class BenchmarkTests(unittest.TestCase):
         seen = []
 
         def evaluate(**kwargs):
+            self.assertEqual(kwargs["model"].batch_size, 2 * max(1, len(gpu_ids or [])))
             self.assertIs(kwargs["model"].model, model)
             self.assertIs(kwargs["model"].tokenizer, tokenizer)
             self.assertEqual(os.environ["HF_TOKEN"], "test-token")
@@ -50,10 +51,17 @@ class BenchmarkTests(unittest.TestCase):
             return {"results": {"gpqa_main_zeroshot": {"acc,none": 0.4}}}
 
         with patch.dict(os.environ, {"HF_TOKEN": "original"}), patch("lm_eval.simple_evaluate", side_effect=evaluate):
-            scores = evaluate_benchmarks(model, tokenizer, batch_size=2, hf_key="test-token")
+            scores = evaluate_benchmarks(model, tokenizer, batch_size=2, hf_key="test-token", gpu_ids=gpu_ids)
             self.assertEqual(os.environ["HF_TOKEN"], "original")
         self.assertEqual(seen, [(["mmlu"], 5), (["gpqa_main_zeroshot"], 0)])
         self.assertEqual(BenchmarkScores.model_validate(scores).model_dump(), {"mmlu": 0.6, "gpqa": 0.4})
+
+    def test_selected_physical_gpus_map_to_logical_devices(self):
+        with patch("torch.cuda.device_count", return_value=2), patch(
+            "torch.nn.DataParallel", side_effect=lambda module, **kwargs: module
+        ) as parallel:
+            self.test_real_hflm_wraps_existing_model_and_returns_two_scores(gpu_ids=[2, 3])
+        self.assertEqual(parallel.call_args.kwargs["device_ids"], [0, 1])
 
     def test_benchmarks_run_before_model_cleanup_only_in_scoring_phase(self):
         for phase, include_benchmarks in (("metrics", True), ("both", True), ("generation", True), ("metrics", False), ("both", False)):
@@ -91,4 +99,5 @@ class BenchmarkTests(unittest.TestCase):
         expected = {"mmlu": 0.6, "gpqa": 0.4}
         with patch("eval_orchestrator._collect_model_outputs_phase", side_effect=[expected, None]) as phase:
             self.assertEqual(_collect_model_outputs(gpu_ids=[2, 3]), expected)
+        self.assertEqual(phase.call_args_list[0].kwargs["gpu_ids"], [2, 3])
         self.assertEqual([call.kwargs["phase"] for call in phase.call_args_list], ["metrics", "generation"])
