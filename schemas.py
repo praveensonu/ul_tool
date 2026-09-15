@@ -206,6 +206,8 @@ class HyperParamsConfig(BaseModel):
 
 
 class FinalTrainingConfigRequest(BaseModel):
+    project_id: Optional[str] = None
+    project_name: Optional[str] = None
     model_name: str
     adaptor_path: Optional[str] = None
     hf_key: Optional[str] = None
@@ -293,6 +295,8 @@ class EvaluationTrainingResult(BaseModel):
 
 
 class EvaluationRequest(BaseModel):
+    project_id: Optional[str] = None
+    project_name: Optional[str] = None
     orchestrator_config: Dict[str, Any]
     training_result: EvaluationTrainingResult
     embedding_model_name: str = Field(..., min_length=1)

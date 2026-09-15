@@ -176,6 +176,8 @@ export default function DataStage() {
 
   async function uploadToBackend(forgetFile: File, retainFile: File | null) {
     const formData = new FormData();
+    formData.append("project_id", project.id);
+    formData.append("project_name", project.name);
     formData.append("forget_set", forgetFile);
     if (retainFile) formData.append("retain_set", retainFile);
     formData.append("prompt_template", buildPromptTemplate(data.promptTemplate));
@@ -288,6 +290,8 @@ export default function DataStage() {
 
         setExtractionResult(null);
         const formData = new FormData();
+        formData.append("project_id", project.id);
+        formData.append("project_name", project.name);
         formData.append("full_dataset", data.fullFile);
         formData.append("poison_set", data.poisonFile);
         formData.append("prompt_template", buildPromptTemplate(data.promptTemplate));

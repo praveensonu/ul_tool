@@ -1,8 +1,12 @@
+from contextlib import asynccontextmanager
+
+import project_store
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from config.api_config import get_cors_allowed_origins
+from routes.project_routes import router as project_router
 from routes.model_routes import router as model_router
 from routes.dataset_routes import router as dataset_router
 from routes.config_routes import router as config_router
@@ -10,7 +14,16 @@ from routes.train_routes import router as train_router
 from routes.evaluation_routes import router as evaluation_router
 from routes.gpu_routes import router as gpu_router
 
+
+@asynccontextmanager
+async def lifespan(app):
+    with project_store.database():
+        pass
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="LLM Training Control API",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
@@ -21,11 +34,12 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=get_cors_allowed_origins(),
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Accept", "Content-Type"],
 )
 
 api_router = APIRouter(prefix="/api")
+api_router.include_router(project_router)
 api_router.include_router(gpu_router)
 api_router.include_router(model_router)
 api_router.include_router(dataset_router)

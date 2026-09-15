@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 import uuid
+import project_store
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -197,6 +198,8 @@ def prepare_uploaded_datasets(
     progress_callback: ProgressCallback | None = None,
     gpu_ids: list[int] | None = None,
     gradient_batch_size: int = 2,
+    project_id: str | None = None,
+    project_name: str | None = None,
 ) -> dict[str, Any]:
     if not model_name.strip():
         raise ValueError("model_name must not be empty.")
@@ -205,9 +208,19 @@ def prepare_uploaded_datasets(
     if max_length < 1:
         raise ValueError("max_length must be at least 1.")
 
-    run_name = _experiment_name(experiment_name)
+    run_name = (
+        f"{project_store.project_slug(project_id, project_name)}-{uuid.uuid4().hex}"
+        if project_id else _experiment_name(experiment_name)
+    )
     gradient_root = GRADIENTS_ROOT / run_name
     input_root = RASLIK_UPLOAD_ROOT / run_name
+    if project_id:
+        project_store.register(project_id, gradient_root, "extraction")
+        project_store.register(project_id, input_root, "extraction_datasets")
+        project_store.record(project_id, "extraction_config", {
+            "model_name": model_name, "adaptor_path": adaptor_path,
+            "prompt_template": prompt_template, "max_length": max_length,
+            "gradient_batch_size": gradient_batch_size, "gpu_ids": gpu_ids})
     config_root = gradient_root / "configs"
     metadata_root = gradient_root / "run_metadata"
 
@@ -218,7 +231,7 @@ def prepare_uploaded_datasets(
     )
     prepared_datasets: dict[str, tuple[Path, int]] = {}
     for label, upload in (("training", full_dataset), ("poison", poison_set)):
-        raw_path = save_upload_file(upload)
+        raw_path = save_upload_file(upload, input_root, prefix=f"{label}_raw")
         dataframe = read_file(raw_path)
         prepared = prepare_raslik_dataframe(
             dataframe,
@@ -261,6 +274,7 @@ def prepare_uploaded_datasets(
         log_paths[label] = log_path
 
     return {
+        "project_id": project_id,
         "run_name": run_name,
         "gradient_root": gradient_root,
         "prepared_datasets": prepared_datasets,
@@ -405,6 +419,10 @@ def extract_prepared_datasets(
     cancel_event: threading.Event | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> dict:
+    project_store.record(prepared_run.get("project_id"), "selection_config", {
+        "selection_method": selection_method, "forget_size": forget_size,
+        "retain_size": retain_size, "grace_top_n": grace_top_n,
+        "grace_num_clusters": grace_num_clusters, "keep_gradients": keep_gradients})
     cache_result: dict | None = None
     try:
         cache_result = cache_prepared_gradients(
@@ -475,6 +493,7 @@ def extract_prepared_datasets(
                 f"{'kept' if keep_gradients else 'removed'}."
             ),
         }
+        project_store.record(prepared_run.get("project_id"), "extraction_result", result)
         _report(progress_callback, "completed", result["message"])
         return result
     except ExtractionCancelledError:

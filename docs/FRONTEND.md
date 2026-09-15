@@ -299,8 +299,8 @@ datasets.
 The frontend has been verified inside Docker with:
 
 ```bash
-docker build -t ascent-unlearning-frontend-test "front end"
-docker run --rm ascent-unlearning-frontend-test npm run build
+docker build -t forgetllm-unlearning-frontend-test "front end"
+docker run --rm forgetllm-unlearning-frontend-test npm run build
 ```
 
 The backend extraction and selection changes have been checked with the test

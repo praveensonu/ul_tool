@@ -1,3 +1,4 @@
+import project_store
 from fastapi import APIRouter, HTTPException
 
 from evaluation_process import (
@@ -41,11 +42,12 @@ def _ensure_gpu_workloads_are_idle() -> None:
 
 
 @router.post("/start", response_model=EvaluationStartResponse)
+@project_store.protect
 def start_evaluation(request: EvaluationRequest):
     _ensure_gpu_workloads_are_idle()
     try:
         _validate_gpus(request)
-        return evaluation_process_manager.start(request.model_dump())
+        return evaluation_process_manager.start(_prepare_config(request))
     except EvaluationAlreadyRunningError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -84,13 +86,28 @@ def cancel_evaluation(job_id: str):
 
 
 @router.post("/run", response_model=EvaluationResponse)
+@project_store.protect
 def run_evaluation(request: EvaluationRequest):
     _ensure_gpu_workloads_are_idle()
 
     try:
         _validate_gpus(request)
-        return evaluation_process_manager.run(request.model_dump())
+        return evaluation_process_manager.run(_prepare_config(request))
     except EvaluationAlreadyRunningError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except EvaluationProcessError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _prepare_config(request: EvaluationRequest) -> dict:
+    config = request.model_dump()
+    project_id = request.project_id or request.orchestrator_config.get("project_id")
+    if project_id:
+        try:
+            config["evaluation_output_dir"] = str(project_store.allocate(
+                project_id, request.project_name or request.orchestrator_config.get("project_name"), "evaluation"))
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        config["orchestrator_config"]["project_id"] = project_id
+        project_store.record(project_id, "evaluation_config", config)
+    return config

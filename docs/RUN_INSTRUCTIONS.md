@@ -94,7 +94,7 @@ You only need to rebuild after changing frontend files or dependencies.
 From the repository root:
 
 ```bash
-docker build -t ascent-unlearning-frontend "front end"
+docker build -t forgetllm-unlearning-frontend "front end"
 ```
 
 ### Start Frontend Container
@@ -103,11 +103,11 @@ From the repository root:
 
 ```bash
 docker run -d \
-  --name ascent-unlearning-frontend-dev \
+  --name forgetllm-unlearning-frontend-dev \
   -p 5173:5173 \
   -e FRONTEND_PORT=5173 \
   -e VITE_API_URL=http://localhost:8000 \
-  ascent-unlearning-frontend
+  forgetllm-unlearning-frontend
 ```
 
 Open:
@@ -123,36 +123,36 @@ container mapping, and `FRONTEND_PORT`:
 
 ```bash
 docker run -d \
-  --name ascent-unlearning-frontend-dev \
+  --name forgetllm-unlearning-frontend-dev \
   -p 5174:5174 \
   -e FRONTEND_PORT=5174 \
   -e VITE_API_URL=http://localhost:8081 \
-  ascent-unlearning-frontend
+  forgetllm-unlearning-frontend
 ```
 
 ### Stop Frontend Container
 
 ```bash
-docker rm -f ascent-unlearning-frontend-dev
+docker rm -f forgetllm-unlearning-frontend-dev
 ```
 
 ### Restart Frontend Container
 
 ```bash
-docker rm -f ascent-unlearning-frontend-dev
+docker rm -f forgetllm-unlearning-frontend-dev
 docker run -d \
-  --name ascent-unlearning-frontend-dev \
+  --name forgetllm-unlearning-frontend-dev \
   -p 5173:5173 \
   -e FRONTEND_PORT=5173 \
   -e VITE_API_URL=http://localhost:8000 \
-  ascent-unlearning-frontend
+  forgetllm-unlearning-frontend
 ```
 
 ### Check Frontend Container
 
 ```bash
-docker ps --filter name=ascent-unlearning-frontend-dev
-docker logs --tail 80 ascent-unlearning-frontend-dev
+docker ps --filter name=forgetllm-unlearning-frontend-dev
+docker logs --tail 80 forgetllm-unlearning-frontend-dev
 ```
 
 Check the canonical API health endpoint from the host:
@@ -179,11 +179,11 @@ Change `VITE_API_URL` when starting the container. This value must be a URL the 
 
 ```bash
 docker run -d \
-  --name ascent-unlearning-frontend-dev \
+  --name forgetllm-unlearning-frontend-dev \
   -p 5173:5173 \
   -e FRONTEND_PORT=5173 \
   -e VITE_API_URL=http://192.168.1.20:8000 \
-  ascent-unlearning-frontend
+  forgetllm-unlearning-frontend
 ```
 
 Also include `http://localhost:5173` (or the actual frontend origin) in the backend's comma-separated `CORS_ALLOWED_ORIGINS` value.
@@ -229,7 +229,7 @@ This server currently has the base `docker` CLI available, but may not have the 
 Stop the frontend:
 
 ```bash
-docker rm -f ascent-unlearning-frontend-dev
+docker rm -f forgetllm-unlearning-frontend-dev
 ```
 
 Stop the backend if it is running in the foreground:
@@ -286,15 +286,37 @@ its forget/retain scoring and before releasing it. The checkbox defaults to off
 and is disabled while evaluation is running. API clients can opt in with
 `include_benchmarks: true`; omitted or false skips both benchmarks and returns
 `benchmarks: null` for each model. The selection is saved with the project.
-Benchmark evaluation uses the first selected GPU
-and the evaluation batch size. Benchmarks run once per model, including when a
+Benchmarks run once per model, including when a
 separate multi-GPU generation phase is needed; no extra model load is introduced.
 
-Install the updated requirements (`lm_eval[hf]==0.4.13` is included). Benchmark
+Install the updated requirements (`lm-eval[hf]==0.4.13` is included). Benchmark
 datasets are downloaded on first use and subsequently use the Hugging Face cache.
 GPQA requires accepting the dataset terms at
 <https://huggingface.co/datasets/Idavidrein/gpqa>. Use the project's configured HF
 key with access to that dataset, or an existing `HF_TOKEN`/Hugging Face login.
+`lm_eval` does not bypass gated-dataset authorization. As documented by
+EleutherAI, GPQA requires access approval; do not assume every harness task
+(including MMLU) has the same access restrictions. Authenticate as the backend
+OS user with:
+
+```bash
+source .venv/bin/activate
+hf auth login
+hf auth whoami
+```
+
+Alternatively, provide `HF_TOKEN` in the backend environment or enter a read token
+in the project's model settings. The current project token takes precedence for
+evaluation; SQLite does not store it, so re-enter it after restoring a project on
+another browser unless backend authentication is configured. Authentication errors
+name the failing harness task and explain how to obtain access.
+
+The integration uses `lm_eval.simple_evaluate` and the official HF `HFLM` wrapper,
+the Python equivalent of the harness CLI. It wraps the already-loaded pre/post
+model (including its attached PEFT adapter), so no second model or subprocess is
+needed. Tasks and dataset loading come from the harness, not custom GPQA/MMLU
+loaders. The application keeps aggregate scores rather than `--log_samples` output.
+
 Benchmark scoring uses the evaluation batch size per selected GPU. With multiple
 GPUs selected, batches are split across model replicas on those GPUs; each GPU
 must fit the model and its scoring batch. Results appear in Primary outcomes

@@ -226,7 +226,9 @@ pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; background: #12
   .embedding-pill { max-width: 100%; }
 }
 
-.gpu-option { display: flex; align-items: center; gap: 1rem; padding: 1rem; margin: .75rem 0; border: 1px solid #d8e3dc; border-radius: 12px; }
+.gpu-option { display: flex; align-items: center; justify-content: flex-start; gap: 1rem; padding: 1rem 1.5rem; margin: .75rem 0; border: 1px solid #d8e3dc; border-radius: 12px; }
+.gpu-option > input[type="checkbox"] { flex: 0 0 auto; margin: 0; }
+.gpu-option > span { min-width: 0; text-align: left; overflow-wrap: anywhere; }
 .gpu-option:has(input:disabled) { opacity: .65; }
 
 /* Default theme foundation */

@@ -479,6 +479,9 @@ def run_eval_orchestrator(
     result["completed_at"] = datetime.now(timezone.utc).isoformat()
     experiment_name = api_config.get("experiment_name") or orchestrator_config.get("experiment_name") or Path(model_path).parent.name
     _report(progress_callback, "saving_results", "Saving evaluation JSONL results.")
-    save_evaluation_jsonl(result, experiment_name)
+    import project_store
+    project_id = orchestrator_config.get("project_id")
+    save_evaluation_jsonl(result, experiment_name, results_root=evaluation_output_dir if project_id else None)
+    project_store.record(project_id, "evaluation_result", result)
     _report(progress_callback, "completed", result["message"])
     return result

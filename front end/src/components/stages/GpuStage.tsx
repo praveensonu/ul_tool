@@ -39,7 +39,7 @@ export default function GpuStage() {
   }
 
   return (
-    <section>
+    <section className="stage-panel">
       <div className="stage-heading">
         <span className="stage-kicker">Stage 1</span>
         <div className="title-with-help"><h1>Select GPUs</h1><HelpTip text={fieldHelp.gpu}/></div>

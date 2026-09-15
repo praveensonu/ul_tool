@@ -109,10 +109,19 @@ export default function EvaluationStage() {
     }
     markStageCompleted("evaluation", false);
     const request: EvaluationRequest = {
-      orchestrator_config: training.orchestrator_config,
+      orchestrator_config: {
+        ...training.orchestrator_config,
+        model: {
+          ...(training.orchestrator_config.model as Record<string, unknown>),
+          // SQLite deliberately excludes credentials; use the current project token.
+          hf_key: project.model.hfKey.trim() || null
+        }
+      },
       training_result: training.result,
       embedding_model_name: embeddingModelName,
       experiment_name: project.name,
+      project_id: project.id,
+      project_name: project.name,
       batch_size: project.run.evaluationBatchSize,
       include_benchmarks: project.run.includeBenchmarks,
       max_new_tokens: project.run.evaluationMaxNewTokens

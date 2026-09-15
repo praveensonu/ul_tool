@@ -146,7 +146,7 @@ class EvaluationProcessManager:
                     cancel_event,
                     self._runner,
                 ),
-                name=f"ascent-evaluation-{job_id[:8]}",
+                name=f"forgetllm-evaluation-{job_id[:8]}",
             )
             self._jobs[job_id] = {
                 "job_id": job_id,

@@ -117,6 +117,8 @@ export type Hyperparams = {
 };
 
 export type FinalTrainingConfigRequest = {
+  project_id?: string;
+  project_name?: string;
   model_name: string;
   adaptor_path: string | null;
   hf_key: string | null;
@@ -165,6 +167,8 @@ export type TrainStopResponse = {
 };
 
 export type EvaluationRequest = {
+  project_id?: string;
+  project_name?: string;
   orchestrator_config: Record<string, unknown>;
   training_result: Record<string, unknown>;
   embedding_model_name: string;

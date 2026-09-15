@@ -12,4 +12,4 @@ def print_tree(directory, prefix=""):
             extension = "    " if i == len(items) - 1 else "│   "
             print_tree(item, prefix + extension)
 
-print_tree("/raid/p.bushipaka/ascent_2/")
+print_tree(Path(__file__).resolve().parent)

@@ -1,4 +1,4 @@
-# Ascent Unlearning Frontend
+# ForgetLLM Unlearning Frontend
 
 Vite and TypeScript frontend for the FastAPI unlearning backend.
 
@@ -14,11 +14,11 @@ Start the frontend in another shell with the base Docker CLI:
 
 ```bash
 cd "front end"
-docker build -t ascent-unlearning-frontend .
+docker build -t forgetllm-unlearning-frontend .
 docker run --rm -it \
   -p 5173:5173 \
   -e VITE_API_URL=http://localhost:8000 \
-  ascent-unlearning-frontend
+  forgetllm-unlearning-frontend
 ```
 
 Open `http://localhost:5173`.

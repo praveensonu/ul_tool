@@ -7,12 +7,45 @@ from unittest.mock import Mock, patch
 
 import pandas as pd
 
-from eval.benchmarks import _accuracy, evaluate_benchmarks
+from eval.benchmarks import _accuracy, _dataset_token, _run_task, evaluate_benchmarks
 from eval_orchestrator import _collect_model_outputs, _collect_model_outputs_phase
 from schemas import BenchmarkScores
 
 
 class BenchmarkTests(unittest.TestCase):
+    def test_gated_gpqa_error_explains_access_and_restores_token(self):
+        import httpx
+        from huggingface_hub.errors import GatedRepoError
+        response = httpx.Response(403, request=httpx.Request("GET", "https://huggingface.co/datasets/Idavidrein/gpqa"))
+        evaluate = Mock(side_effect=GatedRepoError("Access denied", response=response))
+        with patch.dict(os.environ, {"HF_TOKEN": "backend-token"}):
+            with self.assertRaisesRegex(RuntimeError, "Accept the GPQA terms") as error:
+                with _dataset_token("  project-token  "):
+                    self.assertEqual(os.environ["HF_TOKEN"], "project-token")
+                    _run_task(evaluate, task="gpqa_main_zeroshot")
+            self.assertEqual(os.environ["HF_TOKEN"], "backend-token")
+        self.assertIn("hf auth login", str(error.exception))
+        self.assertNotIn("project-token", str(error.exception))
+
+    def test_wrapped_gated_error_and_unrelated_failure(self):
+        from datasets.exceptions import DatasetNotFoundError
+        error = DatasetNotFoundError("Dataset is a gated dataset on the Hub")
+        with self.assertRaisesRegex(RuntimeError, "lm_eval could not access"):
+            _run_task(Mock(side_effect=error), task="gpqa_main_zeroshot")
+        unrelated = RuntimeError("CUDA out of memory")
+        with self.assertRaises(RuntimeError) as raised:
+            _run_task(Mock(side_effect=unrelated), task="mmlu")
+        self.assertIs(raised.exception, unrelated)
+
+    def test_missing_project_token_preserves_backend_authentication(self):
+        with patch.dict(os.environ, {"HF_TOKEN": "backend-token"}):
+            with _dataset_token("  "):
+                self.assertEqual(os.environ["HF_TOKEN"], "backend-token")
+        with patch.dict(os.environ, {}, clear=True):
+            with _dataset_token("temporary-token"):
+                self.assertEqual(os.environ["HF_TOKEN"], "temporary-token")
+            self.assertNotIn("HF_TOKEN", os.environ)
+
     def test_only_global_accuracy_is_selected(self):
         result = {"groups": {"mmlu": {"acc,none": 0.63}},
                   "results": {"mmlu_subject": {"acc,none": 0.99}}}

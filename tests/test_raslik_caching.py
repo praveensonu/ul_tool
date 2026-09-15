@@ -87,7 +87,7 @@ class RaslikGradientCachingTests(unittest.TestCase):
             raw_counter = 0
             calls = []
 
-            def save_upload(upload):
+            def save_upload(upload, directory=None, prefix="raw"):
                 nonlocal raw_counter
                 raw_counter += 1
                 suffix = Path(upload.filename or "").suffix
@@ -164,7 +164,7 @@ class RaslikGradientCachingTests(unittest.TestCase):
             root = Path(temporary_directory)
             raw_counter = 0
 
-            def save_upload(upload):
+            def save_upload(upload, directory=None, prefix="raw"):
                 nonlocal raw_counter
                 raw_counter += 1
                 path = root / f"raw-{raw_counter}{Path(upload.filename or '').suffix}"
@@ -255,7 +255,7 @@ class RaslikGradientCachingTests(unittest.TestCase):
             runner_started = threading.Event()
             release_runner = threading.Event()
 
-            def save_upload(upload):
+            def save_upload(upload, directory=None, prefix="raw"):
                 nonlocal raw_counter
                 raw_counter += 1
                 path = root / f"raw-{raw_counter}{Path(upload.filename or '').suffix}"

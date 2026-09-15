@@ -30,22 +30,30 @@ export default function HomePage() {
   }, []);
 
   async function handleCreate() {
-    const project = createDefaultProject();
-    await saveProject(project);
-    navigate(`/project/${project.id}/gpu`);
+    try {
+      const project = createDefaultProject();
+      await saveProject(project);
+      navigate(`/project/${project.id}/gpu`);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not create project.");
+    }
   }
 
   async function handleDelete(project: Project) {
-    if (!window.confirm(`Delete ${project.name || "this project"}?`)) return;
-    await deleteProject(project.id);
-    await refresh();
+    if (!window.confirm(`Delete ${project.name || "this project"} and its uploaded datasets, generated models, and results?`)) return;
+    try {
+      await deleteProject(project.id);
+      await refresh();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not delete project files.");
+    }
   }
 
   return (
     <main className="home-shell">
       <header className="home-header">
         <div>
-          <p className="eyebrow">Ascent unlearning</p>
+          <p className="eyebrow">ForgetLLM unlearning</p>
           <h1>Projects</h1>
           <p className="muted">Create a new unlearning project or continue from your previous history.</p>
         </div>
@@ -61,7 +69,7 @@ export default function HomePage() {
       ) : projects.length === 0 ? (
         <section className="empty-state">
           <h2>No projects yet</h2>
-          <p>Create your first project. Its data, settings, and last open stage are saved in this browser.</p>
+          <p>Create your first project. Project settings and results are saved on the server. Selected files are also cached in this browser.</p>
           <button className="primary-button" type="button" onClick={handleCreate}>
             <Plus size={18} />
             New unlearning project

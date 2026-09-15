@@ -8,11 +8,12 @@ from fastapi import UploadFile
 UPLOAD_DIR = "uploaded_datasets"
 
 
-def save_upload_file(file: UploadFile) -> str:
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+def save_upload_file(file: UploadFile, directory=None, prefix="raw") -> str:
+    directory = str(directory or UPLOAD_DIR)
+    os.makedirs(directory, exist_ok=True)
 
     ext = os.path.splitext(file.filename)[-1]
-    raw_path = os.path.join(UPLOAD_DIR, f"raw_{uuid.uuid4()}{ext}")
+    raw_path = os.path.join(directory, f"{prefix}_{uuid.uuid4()}{ext}")
 
     with open(raw_path, "wb") as f:
         f.write(file.file.read())
@@ -125,11 +126,12 @@ def save_jsonl_dataframe(df: pd.DataFrame, path: Path) -> str:
     return str(path)
 
 
-def save_processed_dataframe(df: pd.DataFrame, dataset_name: str) -> str:
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+def save_processed_dataframe(df: pd.DataFrame, dataset_name: str, directory=None) -> str:
+    directory = str(directory or UPLOAD_DIR)
+    os.makedirs(directory, exist_ok=True)
 
     path = os.path.join(
-        UPLOAD_DIR,
+        directory,
         f"{dataset_name}_{uuid.uuid4()}.parquet",
     )
 
@@ -141,15 +143,16 @@ def process_dataset(
     file: UploadFile,
     prompt_template: str,
     dataset_name: str,
+    directory=None,
 ):
-    raw_path = save_upload_file(file)
+    raw_path = save_upload_file(file, directory, prefix=f"{dataset_name}_raw")
     df = read_file(raw_path)
 
     validate_qa_columns(df, dataset_name)
 
     df = apply_prompt_template(df, prompt_template)
 
-    processed_path = save_processed_dataframe(df, dataset_name)
+    processed_path = save_processed_dataframe(df, dataset_name, directory)
 
     return df, processed_path
 

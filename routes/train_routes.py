@@ -1,3 +1,5 @@
+import uuid
+import project_store
 from fastapi import APIRouter, HTTPException
 
 from schemas import (
@@ -18,6 +20,7 @@ router = APIRouter(prefix="/train", tags=["Training"])
 
 
 @router.post("/run", response_model=TrainRunResponse)
+@project_store.protect
 def run_training(request: FinalTrainingConfigRequest):
     if gradient_cache_manager.is_running:
         raise HTTPException(
@@ -38,10 +41,18 @@ def run_training(request: FinalTrainingConfigRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:
+        project_id = request.project_id
+        if project_id:
+            orchestrator_config["output_dir"] = str(project_store.allocate(project_id, request.project_name, "training"))
+            project_store.record(project_id, "training_config", orchestrator_config)
+        else:
+            orchestrator_config["output_dir"] = f"outputs/runs/unassigned-{uuid.uuid4().hex}"
         outcome = training_process_manager.run(orchestrator_config)
+        project_store.record(project_id, "training_result", {"status": outcome.status, "result": outcome.result})
     except TrainingAlreadyRunningError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except TrainingProcessError as exc:
+    except (TrainingProcessError, ValueError) as exc:
+        project_store.record(request.project_id, "training_error", {"error": str(exc)})
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if outcome.status == "stopped":

@@ -12,6 +12,8 @@ export function buildTrainingPayload(
   const h = project.hyperparameters;
 
   return {
+    project_id: project.id,
+    project_name: project.name,
     model_name: project.model.modelName.trim(),
     adaptor_path:
       project.model.method === "adaptor" ? optionalText(project.model.adaptorPath) : null,

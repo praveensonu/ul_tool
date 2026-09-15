@@ -284,7 +284,7 @@ export default function App() {
       <header className="topbar">
         <div>
           <p className="eyebrow">LLM unlearning</p>
-          <h1>Ascent training console</h1>
+          <h1>ForgetLLM training console</h1>
         </div>
         <button className="status-button" type="button" onClick={refreshBackend}>
           {backendState === "checking" ? (

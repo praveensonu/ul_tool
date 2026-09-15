@@ -1,3 +1,4 @@
+import project_store
 from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 
@@ -27,19 +28,24 @@ router = APIRouter(prefix="/dataset", tags=["Dataset"])
 
 
 @router.post("/upload", response_model=DatasetUploadResponse)
+@project_store.protect
 def upload_dataset_config(
     forget_set: UploadFile = File(...),
     retain_set: Optional[UploadFile] = File(None),
     prompt_template: str = Form(...),
+    project_id: Optional[str] = Form(None),
+    project_name: Optional[str] = Form(None),
 ):
     try:
         if retain_set is not None and forget_set is None:
             raise ValueError("retain_set cannot be uploaded without forget_set.")
 
+        directory = project_store.allocate(project_id, project_name, "datasets") if project_id else None
         forget_df, forget_path = process_dataset(
             file=forget_set,
             prompt_template=prompt_template,
             dataset_name="forget_set",
+            directory=directory,
         )
 
         retain_df = None
@@ -50,6 +56,7 @@ def upload_dataset_config(
                 file=retain_set,
                 prompt_template=prompt_template,
                 dataset_name="retain_set",
+                directory=directory,
             )
 
         training_config = {
@@ -60,6 +67,7 @@ def upload_dataset_config(
             "retain_num_rows": len(retain_df) if retain_df is not None else None,
         }
 
+        project_store.record(project_id, "dataset_upload", training_config)
         return DatasetUploadResponse(
             status="success",
             forget_set_path=forget_path,
@@ -78,10 +86,13 @@ def upload_dataset_config(
 
 
 @router.post("/cache-gradients", response_model=GradientCacheResponse)
+@project_store.protect
 def cache_gradients(
     full_dataset: UploadFile = File(...),
     poison_set: UploadFile = File(...),
     prompt_template: str = Form(...),
+    project_id: Optional[str] = Form(None),
+    project_name: Optional[str] = Form(None),
     experiment_name: str = Form("raslik"),
     model_name: str = Form(...),
     max_length: int = Form(..., ge=1),
@@ -107,6 +118,8 @@ def cache_gradients(
             poison_set=poison_set,
             prompt_template=prompt_template,
             experiment_name=experiment_name,
+            project_id=project_id,
+            project_name=project_name,
             model_name=model_name,
             max_length=max_length,
             adaptor_path=adaptor_path,
@@ -123,10 +136,13 @@ def cache_gradients(
 
 
 @router.post("/extract", response_model=DatasetExtractionResponse)
+@project_store.protect
 def extract_forget_retain(
     full_dataset: UploadFile = File(...),
     poison_set: UploadFile = File(...),
     prompt_template: str = Form(...),
+    project_id: Optional[str] = Form(None),
+    project_name: Optional[str] = Form(None),
     experiment_name: str = Form("selection"),
     model_name: str = Form(...),
     max_length: int = Form(..., ge=1),
@@ -158,6 +174,8 @@ def extract_forget_retain(
             poison_set=poison_set,
             prompt_template=prompt_template,
             experiment_name=experiment_name,
+            project_id=project_id,
+            project_name=project_name,
             model_name=model_name,
             max_length=max_length,
             adaptor_path=adaptor_path,
@@ -180,10 +198,13 @@ def extract_forget_retain(
 
 
 @router.post("/extract/start", response_model=ExtractionStartResponse)
+@project_store.protect
 def start_forget_retain_extraction(
     full_dataset: UploadFile = File(...),
     poison_set: UploadFile = File(...),
     prompt_template: str = Form(...),
+    project_id: Optional[str] = Form(None),
+    project_name: Optional[str] = Form(None),
     experiment_name: str = Form("selection"),
     model_name: str = Form(...),
     max_length: int = Form(..., ge=1),
@@ -213,6 +234,8 @@ def start_forget_retain_extraction(
             poison_set=poison_set,
             prompt_template=prompt_template,
             experiment_name=experiment_name,
+            project_id=project_id,
+            project_name=project_name,
             model_name=model_name,
             max_length=max_length,
             adaptor_path=adaptor_path,

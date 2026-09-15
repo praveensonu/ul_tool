@@ -62,6 +62,8 @@ export default function RunningStage() {
     if (!forgetFile) throw new Error("The prepared forget dataset is missing.");
 
     const formData = new FormData();
+    formData.append("project_id", project.id);
+    formData.append("project_name", project.name);
     formData.append("forget_set", forgetFile);
     if (retainFile) formData.append("retain_set", retainFile);
     formData.append(

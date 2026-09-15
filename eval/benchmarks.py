@@ -8,6 +8,7 @@ from contextlib import contextmanager
 
 @contextmanager
 def _dataset_token(token):
+    token = token.strip() if token else None
     previous = os.environ.get("HF_TOKEN")
     if token:
         os.environ["HF_TOKEN"] = token
@@ -19,6 +20,43 @@ def _dataset_token(token):
                 os.environ.pop("HF_TOKEN", None)
             else:
                 os.environ["HF_TOKEN"] = previous
+
+
+def _is_authorization_error(error):
+    """datasets can wrap Hub authorization failures in DatasetNotFoundError."""
+    from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
+
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        if isinstance(error, GatedRepoError):
+            return True
+        if isinstance(error, HfHubHTTPError) and getattr(error.response, "status_code", None) in (401, 403):
+            return True
+        # datasets also raises a standalone DatasetNotFoundError for gated repos.
+        if type(error).__name__ == "DatasetNotFoundError" and "gated" in str(error).lower():
+            return True
+        error = error.__cause__ or error.__context__
+    return False
+
+
+def _run_task(evaluate, *, task, **kwargs):
+    try:
+        return evaluate(tasks=[task], **kwargs)
+    except Exception as error:
+        if not _is_authorization_error(error):
+            raise
+        access = (
+            "Accept the GPQA terms at https://huggingface.co/datasets/Idavidrein/gpqa "
+            "and ensure access is approved for your Hugging Face account. "
+            if task.startswith("gpqa") else "Ensure your Hugging Face account can access the benchmark dataset. "
+        )
+        raise RuntimeError(
+            f"lm_eval could not access the dataset for {task}. {access}"
+            "Enter that account's read token in the project's HF token field, "
+            "set HF_TOKEN on the backend, or run `hf auth login` as the backend user. "
+            "lm_eval requires the same dataset authorization as Hugging Face."
+        ) from error
 
 
 def _accuracy(result, task, *, group=False):
@@ -92,8 +130,8 @@ def evaluate_benchmarks(model, tokenizer, batch_size=4, hf_key=None, progress_ca
                 current.update(name=name, batch=0)
                 if progress_callback:
                     progress_callback(f"benchmark_{name}", f"Evaluating {name.upper()} global accuracy.")
-                result = simple_evaluate(
-                    model=lm, tasks=[task], num_fewshot=shots,
+                result = _run_task(
+                    simple_evaluate, task=task, model=lm, num_fewshot=shots,
                     log_samples=False, write_out=False, bootstrap_iters=0,
                     apply_chat_template=False, random_seed=0,
                     numpy_random_seed=1234, torch_random_seed=1234,

@@ -1,6 +1,6 @@
-# Ascent Unlearning Tool
+# ForgetLLM Unlearning Tool
 
-Ascent Unlearning Tool is a FastAPI backend with a Vite, React, and TypeScript frontend for configuring and launching LLM unlearning runs. The application supports dataset upload, prompt-template formatting, model and GPU settings, training configuration preview, and training launch through the backend API.
+ForgetLLM Unlearning Tool is a FastAPI backend with a Vite, React, and TypeScript frontend for configuring and launching LLM unlearning runs. The application supports dataset upload, prompt-template formatting, model and GPU settings, training configuration preview, and training launch through the backend API.
 
 ## Repository Layout
 
@@ -82,17 +82,17 @@ The frontend is intended to run through Docker, so host-level `npm` is not requi
 Build the frontend image from the repository root:
 
 ```bash
-docker build -t ascent-unlearning-frontend "front end"
+docker build -t forgetllm-unlearning-frontend "front end"
 ```
 
 Start the frontend container:
 
 ```bash
 docker run -d \
-  --name ascent-unlearning-frontend-dev \
+  --name forgetllm-unlearning-frontend-dev \
   -p 5173:5173 \
   -e VITE_API_URL=http://localhost:8000 \
-  ascent-unlearning-frontend
+  forgetllm-unlearning-frontend
 ```
 
 Open the app:
@@ -124,7 +124,7 @@ docker compose down
 Stop the frontend container:
 
 ```bash
-docker rm -f ascent-unlearning-frontend-dev
+docker rm -f forgetllm-unlearning-frontend-dev
 ```
 
 If the backend is running in the foreground, stop it with `Ctrl+C`.
@@ -141,8 +141,8 @@ kill <PID>
 Check the frontend container:
 
 ```bash
-docker ps --filter name=ascent-unlearning-frontend-dev
-docker logs --tail 80 ascent-unlearning-frontend-dev
+docker ps --filter name=forgetllm-unlearning-frontend-dev
+docker logs --tail 80 forgetllm-unlearning-frontend-dev
 ```
 
 Check the backend's canonical health route:
@@ -217,3 +217,59 @@ See `docs/resources.md` for product and UI references.
 ## Plan
 
 See `docs/plan.md` for the project plan.
+
+## Project storage and cleanup
+
+The API creates `outputs/projects.sqlite3` automatically (Python's built-in SQLite;
+no additional dependency). The browser synchronizes project settings to this DB,
+including existing browser projects when the project list is opened. Selected
+`File` objects stay in IndexedDB; their filename/size/type metadata is stored in
+SQLite. Restoring a project on another browser restores settings and server paths,
+but files that were only selected locally must be selected again. Hugging Face
+access tokens are excluded from SQLite.
+
+New frontend requests include `project_id` and `project_name`. Storage uses a
+sanitized project name plus its ID to distinguish projects with identical names:
+
+- Uploads: `uploaded_datasets/<name>--<id>/datasets-<unique-id>/` (raw and processed files).
+- Models/checkpoints/logs: `outputs/runs/<name>--<id>/training-<unique-id>/`;
+  the final model or adapter is in the algorithm subdirectory.
+- Evaluation: `outputs/runs/<name>--<id>/evaluation-<unique-id>/`, including scores
+  and the project-named results JSONL.
+- Extraction: `outputs/gradients/<name>--<id>-<unique-id>/` and
+  `uploaded_datasets/raslik/<name>--<id>-<unique-id>/`.
+
+Each run has a new directory. Renaming a project changes names used for subsequent
+artifacts; earlier paths remain valid and are still owned by the same project ID.
+Old API clients may omit project identity; their outputs are not associated with a
+project, though API training runs still receive unique output directories.
+
+The `projects` table stores the current project snapshot. The `project_details`
+SQL view exposes project ID/name, dataset, extraction method, pre-unlearning model,
+adapter mode/path, algorithm, hyperparameters, and evaluation results as columns.
+`events` stores backend training configs/results/errors, dataset uploads,
+extraction configs/results, and evaluation configs/results, so completed backend
+results remain available even if the browser closes. `artifacts` records generated
+paths for cleanup. For example:
+
+```sql
+SELECT * FROM project_details;
+SELECT kind, details, created_at FROM events WHERE project_id = 'your-project-id';
+```
+
+`GET /api/projects` lists snapshots, `GET /api/projects/{id}` also returns history
+and artifact paths, and `PUT /api/projects/{id}` saves metadata.
+`DELETE /api/projects/{id}` removes registered files and DB metadata before the
+frontend deletes its local copy. Deletion is blocked during active uploads,
+training, extraction, or evaluation. Cleanup failures keep metadata for retry.
+Source models and adapters supplied as inputs are not registered for deletion.
+Deleted IDs are retained as tombstones to prevent stale browser saves from
+recreating a deleted project.
+
+**Existing files:** the old trainer reused `outputs/run/<algorithm>` and could
+have overwritten earlier models. Old raw uploads have random names with no
+project ownership record. Existing project snapshots are synchronized, but those
+unregistered legacy files are preserved: their ownership cannot be inferred
+reliably, and shared model directories must not be deleted as if they belonged to
+one project. The naming and automatic file cleanup above apply to newly generated
+project-owned artifacts; overwritten historical models cannot be recovered.

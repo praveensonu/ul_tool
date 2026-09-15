@@ -77,7 +77,7 @@ class TrainingProcessManager:
             process = self._context.Process(
                 target=_training_worker,
                 args=(api_config, result_queue, self._runner),
-                name="ascent-training",
+                name="forgetllm-training",
             )
             self._process = process
             self._stop_requested = False

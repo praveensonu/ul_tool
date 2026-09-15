@@ -4,6 +4,8 @@ from unlearning.methods import UNLEARNING_METHOD_ARGS
 
 def build_orchestrator_config(request: FinalTrainingConfigRequest) -> dict:
     return {
+        "project_id": request.project_id,
+        "project_name": request.project_name,
         "model": {
             "model_name": request.model_name,
             "adaptor_path": request.adaptor_path,
