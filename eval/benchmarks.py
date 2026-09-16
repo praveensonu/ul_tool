@@ -8,14 +8,22 @@ from contextlib import contextmanager
 
 @contextmanager
 def _dataset_token(token):
+    from huggingface_hub import constants
+
     token = token.strip() if token else None
     previous = os.environ.get("HF_TOKEN")
+    previous_implicit = constants.HF_HUB_DISABLE_IMPLICIT_TOKEN
     if token:
         os.environ["HF_TOKEN"] = token
+        # Harness tasks load datasets without an explicit token argument. Honor
+        # the supplied project credential even when implicit auth was disabled
+        # at backend startup (the Hub reads this setting at import time).
+        constants.HF_HUB_DISABLE_IMPLICIT_TOKEN = False
     try:
         yield
     finally:
         if token:
+            constants.HF_HUB_DISABLE_IMPLICIT_TOKEN = previous_implicit
             if previous is None:
                 os.environ.pop("HF_TOKEN", None)
             else:

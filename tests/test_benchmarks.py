@@ -13,6 +13,27 @@ from schemas import BenchmarkScores
 
 
 class BenchmarkTests(unittest.TestCase):
+    def test_project_token_authenticates_when_implicit_auth_is_disabled(self):
+        from huggingface_hub import constants
+        from huggingface_hub.utils import build_hf_headers
+
+        with patch.dict(os.environ, {"HF_TOKEN": "backend-token"}), patch.object(
+            constants, "HF_HUB_DISABLE_IMPLICIT_TOKEN", True
+        ):
+            for task in ("mmlu", "gpqa_main_zeroshot"):
+                with self.subTest(task=task):
+                    def evaluate(**kwargs):
+                        self.assertEqual(kwargs["tasks"], [task])
+                        self.assertEqual(build_hf_headers()["authorization"], "Bearer project-token")
+                        raise RuntimeError("stop after authentication")
+
+                    with self.assertRaisesRegex(RuntimeError, "stop after authentication"):
+                        with _dataset_token(" project-token "):
+                            _run_task(evaluate, task=task)
+                    self.assertTrue(constants.HF_HUB_DISABLE_IMPLICIT_TOKEN)
+                    self.assertNotIn("authorization", build_hf_headers())
+                    self.assertEqual(os.environ["HF_TOKEN"], "backend-token")
+
     def test_gated_gpqa_error_explains_access_and_restores_token(self):
         import httpx
         from huggingface_hub.errors import GatedRepoError
@@ -110,6 +131,7 @@ class BenchmarkTests(unittest.TestCase):
                 def benchmark(*args, **kwargs):
                     self.assertIs(args[0], model)
                     self.assertIs(args[1], tokenizer)
+                    self.assertEqual(kwargs["hf_key"], "loaded-project-token")
                     self.assertNotIn("released", events)
                     events.append("benchmarks")
                     return {"mmlu": 0.6, "gpqa": 0.4}
@@ -123,6 +145,7 @@ class BenchmarkTests(unittest.TestCase):
                         forget_source=source, retain_source=source, max_new_tokens=10,
                         forget_output_path=forget, retain_output_path=retain,
                         torch_module=Mock(), progress_callback=None, phase=phase, include_benchmarks=include_benchmarks,
+                        hf_key="loaded-project-token",
                     )
                 self.assertEqual(runner.call_count, int(include_benchmarks and phase != "generation"))
                 self.assertEqual(events[-1], "released")

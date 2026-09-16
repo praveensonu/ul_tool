@@ -1,6 +1,51 @@
 # Run Instructions
 
-This project can run without host-level `npm`. The frontend is intended to run through Docker.
+## Run the Entire Application in One Docker Image
+
+From the repository root:
+
+```bash
+docker build -t forgetllm-unlearning .
+docker run --rm --name forgetllm-unlearning \
+  --gpus all --shm-size=2g \
+  -p 5174:8080 \
+  -v forgetllm-outputs:/app/outputs \
+  -v forgetllm-datasets:/app/uploaded_datasets \
+  -v forgetllm-hf-cache:/app/hf-cache \
+  forgetllm-unlearning
+```
+
+Open **http://localhost:5174**. The API is available at
+`http://localhost:5174/api`, with documentation at `/api/docs`.
+Check it with `curl -fsS http://localhost:5174/api/health`.
+Press Ctrl+C to stop both services. The named volumes preserve projects,
+training results, uploads, and downloaded models across container recreation.
+
+The image builds the frontend with `npm ci`, creates a Python 3.12 virtual
+environment with `uv venv`, and installs `requirements.txt` with `uv pip install`.
+Nginx serves the built frontend and forwards `/api` to Uvicorn within the same
+container. No host Python, uv, npm, or separate backend port is needed.
+Change `5174:8080` to choose another host port; the container port stays `8080`.
+The existing `start.sh` remains the separate development workflow described below.
+
+GPU execution requires an NVIDIA driver compatible with the CUDA 13 dependencies
+and NVIDIA Container Toolkit on the Docker host. Omit `--gpus all` for UI/API-only
+use without GPU access. The pinned CUDA dependencies are still installed; allow
+several GB of disk space and time for the first build. Image builds require access
+to the container, npm, and Python package registries.
+
+To use existing local projects and uploads, replace the first two named-volume
+arguments with `-v "$PWD/outputs:/app/outputs"` and
+`-v "$PWD/uploaded_datasets:/app/uploaded_datasets"`. Existing project paths that
+refer to host files must be made available at their expected container paths.
+For gated Hugging Face models or datasets, pass `-e HF_TOKEN` after exporting the
+token in your shell, or enter it in the application's model settings. Local `.env`
+files, virtual environments, uploads, and outputs are excluded from the image.
+Rebuild after changing application code or requirements.
+
+## Development Workflow
+
+This workflow can run without host-level `npm`. The frontend runs through Docker.
 
 ## Start the Entire Application
 
@@ -310,6 +355,9 @@ in the project's model settings. The current project token takes precedence for
 evaluation; SQLite does not store it, so re-enter it after restoring a project on
 another browser unless backend authentication is configured. Authentication errors
 name the failing harness task and explain how to obtain access.
+Both MMLU and GPQA automatically use the loaded project HF key for dataset
+downloads, including when backend implicit Hugging Face authentication is disabled.
+The backend's authentication settings are restored after benchmark evaluation.
 
 The integration uses `lm_eval.simple_evaluate` and the official HF `HFLM` wrapper,
 the Python equivalent of the harness CLI. It wraps the already-loaded pre/post

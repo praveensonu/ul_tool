@@ -1,0 +1,16 @@
+.git
+.agents
+.codex
+.venv
+**/__pycache__
+**/*.pyc
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+outputs
+uploaded_datasets
+hf-cache
+*.zip
+*.jsonl
+.pytest_cache

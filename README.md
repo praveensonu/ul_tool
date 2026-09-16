@@ -22,6 +22,15 @@ Generated files are intentionally ignored by Git, including `.venv/`, `outputs/`
 
 ## Requirements
 
+For the complete Docker image, only Docker is needed on the host, plus an NVIDIA
+driver and NVIDIA Container Toolkit for GPU execution. Build with
+`docker build -t forgetllm-unlearning .`, then follow the
+[full-image run instructions](docs/RUN_INSTRUCTIONS.md#run-the-entire-application-in-one-docker-image)
+for ports, persistent storage, and GPU access. The image creates its Python
+environment with uv and includes both the backend and built frontend.
+
+For the development workflow below:
+
 - Python environment with the backend dependencies installed.
 - Docker for the frontend development server.
 - A CUDA-capable environment if you want to run GPU training.
