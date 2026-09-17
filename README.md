@@ -22,12 +22,11 @@ Generated files are intentionally ignored by Git, including `.venv/`, `outputs/`
 
 ## Requirements
 
-For the complete Docker image, only Docker is needed on the host, plus an NVIDIA
-driver and NVIDIA Container Toolkit for GPU execution. Build with
-`docker build -t forgetllm-unlearning .`, then follow the
-[full-image run instructions](docs/RUN_INSTRUCTIONS.md#run-the-entire-application-in-one-docker-image)
-for ports, persistent storage, and GPU access. The image creates its Python
-environment with uv and includes both the backend and built frontend.
+For the complete Docker image, install Docker on the host. GPU execution also
+requires NVIDIA Container Toolkit and an NVIDIA driver compatible with the pinned
+CUDA 13 dependencies. No host Python, uv, or npm installation is needed.
+The first build downloads several GB of dependencies and requires access to the
+container, Python, and npm package registries.
 
 For the development workflow below:
 
@@ -37,7 +36,81 @@ For the development workflow below:
 
 This repository currently includes a local `.venv/` workflow. The checked-in `requirements.txt` contains environment-specific pins, so use the existing environment when available or recreate dependencies carefully for your machine.
 
-## Quick Start
+## Quick Start: Entire Application in Docker
+
+From the repository root, build the image:
+
+```bash
+docker build -t forgetllm-unlearning .
+```
+
+The build creates a Python 3.12 virtual environment with `uv venv`, installs
+`requirements.txt` with `uv pip install`, and builds the frontend with `npm ci`
+and `npm run build`. The image runs Uvicorn and Nginx together, serving the
+frontend and API on one port.
+
+Run with GPU access and persistent storage:
+
+```bash
+docker run --rm --name forgetllm-unlearning \
+  --gpus all --shm-size=2g \
+  -p 5174:8080 \
+  -v forgetllm-outputs:/app/outputs \
+  -v forgetllm-datasets:/app/uploaded_datasets \
+  -v forgetllm-hf-cache:/app/hf-cache \
+  forgetllm-unlearning
+```
+
+Open **http://localhost:5174**. API documentation is available at
+**http://localhost:5174/api/docs**. Omit `--gpus all` for UI/API-only use on a
+host without GPU access; the image still includes the CUDA dependencies.
+To choose another host port, change `5174:8080`; the container port stays `8080`.
+The browser uses same-origin `/api` requests, so no separate backend port or
+`VITE_API_URL` setting is needed.
+
+Check the API:
+
+```bash
+curl -fsS http://localhost:5174/api/health
+```
+
+Expected response: `{"message":"LLM training API is running"}`.
+
+Press `Ctrl+C` to stop both services. To stop from another terminal, run
+`docker stop forgetllm-unlearning`. The container is removed on exit; rerun the
+same command to start it again with the saved data. To run in the background,
+add `-d` to `docker run` and view logs with `docker logs -f forgetllm-unlearning`.
+
+### Persistent Data and Model Access
+
+The named volumes are created automatically and survive container removal:
+
+| Volume | Contents |
+| --- | --- |
+| `forgetllm-outputs` | Project database, training outputs, and evaluation results |
+| `forgetllm-datasets` | Uploaded datasets |
+| `forgetllm-hf-cache` | Downloaded Hugging Face models and datasets |
+
+To reuse this checkout's existing data, replace the first two `-v` arguments with:
+
+```bash
+  -v "$PWD/outputs:/app/outputs" \
+  -v "$PWD/uploaded_datasets:/app/uploaded_datasets" \
+```
+
+Run from the repository root. Any absolute paths saved in existing projects must
+also be accessible inside the container; mount local models at the paths used
+by the application.
+
+For gated Hugging Face models or datasets, export `HF_TOKEN` in your shell and
+add `-e HF_TOKEN` before the image name, or enter the token in the application's
+model settings. Local `.env` files, `.venv`, uploads, and outputs are excluded
+from the image. Rebuild after changing application code or requirements, then
+stop and recreate the container to use the updated image.
+
+See [Run Instructions](docs/RUN_INSTRUCTIONS.md) for additional configuration.
+
+## Development: Start Both Services
 
 The backend uses the repository's Python environment and the frontend runs in Docker. From the repository root, start both services with:
 
